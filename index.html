@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Stock Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="logo">
+                <i class="fa-solid fa-chart-line"></i>
+                <span>InvestAI</span>
+            </div>
+            <ul class="nav-links">
+                <li class="active" data-target="dashboard-view"><i class="fa-solid fa-border-all"></i> Dashboard</li>
+                <li data-target="portfolio-view"><i class="fa-solid fa-wallet"></i> Portfolio</li>
+                <li data-target="assistant-view"><i class="fa-solid fa-robot"></i> AI Assistant</li>
+                <li data-target="settings-view"><i class="fa-solid fa-gear"></i> Settings</li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-bar">
+                <div class="search-container">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="stock-search" placeholder="Search for a ticker (e.g., AAPL)...">
+                </div>
+                <div class="user-profile">
+                    <img src="https://ui-avatars.com/api/?name=User&background=random" alt="Profile">
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <section id="dashboard-view" class="view active-view">
+                <div class="welcome-banner glass-panel">
+                    <div class="banner-content">
+                        <h1>Good Morning, Investor</h1>
+                        <p>Market is currently open. S&P 500 is up 1.2% today.</p>
+                    </div>
+                    <button class="primary-btn" id="ask-ai-banner-btn"><i class="fa-solid fa-sparkles"></i> Analyze Market</button>
+                </div>
+
+                <h2 class="section-title">Market Indices</h2>
+                <div class="indices-grid">
+                    <!-- Cards will be populated by JS -->
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="trending-stocks glass-panel">
+                        <h3>Trending Stocks</h3>
+                        <ul id="trending-list" class="stock-list">
+                            <!-- List populated by JS -->
+                        </ul>
+                    </div>
+                    <div class="market-news glass-panel">
+                        <h3>Recent News</h3>
+                        <ul id="news-list" class="news-list">
+                            <!-- List populated by JS -->
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Stock Detail View (Hidden by default) -->
+            <section id="stock-detail-view" class="view">
+                <div class="stock-header glass-panel">
+                    <div class="stock-title-info">
+                        <h1 id="detail-ticker">AAPL</h1>
+                        <span id="detail-name">Apple Inc.</span>
+                    </div>
+                    <div class="stock-price-info">
+                        <h2 id="detail-price">$189.43</h2>
+                        <span id="detail-change" class="positive">+1.24 (0.65%)</span>
+                    </div>
+                </div>
+
+                <div class="stock-detail-grid">
+                    <div class="chart-container glass-panel">
+                        <canvas id="stockChart"></canvas>
+                    </div>
+                    
+                    <div class="stats-container glass-panel">
+                        <h3>Key Statistics</h3>
+                        <div class="stats-grid" id="stats-grid">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ai-analysis-container glass-panel mt-4">
+                    <h3>AI Quick Analysis</h3>
+                    <p id="ai-quick-summary">Loading analysis...</p>
+                    <button class="secondary-btn mt-2" id="deep-dive-btn">Deep Dive in Chat</button>
+                </div>
+            </section>
+
+            <!-- AI Assistant View -->
+            <section id="assistant-view" class="view">
+                <div class="chat-container glass-panel">
+                    <div class="chat-header">
+                        <h2><i class="fa-solid fa-robot"></i> AI Decision Assistant</h2>
+                        <span class="status online">Online</span>
+                    </div>
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="message ai-message">
+                            <div class="message-avatar"><i class="fa-solid fa-robot"></i></div>
+                            <div class="message-content">
+                                Hello! I'm your AI Investment Assistant. You can ask me to analyze specific stocks, summarize financial reports, or give an overview of current market trends. How can I help you today?
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-container">
+                        <input type="text" id="chat-input" placeholder="Type your message here...">
+                        <button id="send-msg-btn"><i class="fa-solid fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
