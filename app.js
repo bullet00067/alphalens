@@ -1217,9 +1217,25 @@ function renderTradingViewChart(data) {
                 const visibleData = data.slice(startIdx, endIdx + 1);
                 const pips = findPIPs(visibleData);
                 pipSeries.setData(pips);
+                
+                // Add distinct markers to PIPs with Date and Price
+                const markers = pips.map((p, idx) => {
+                    const isHigh = idx > 0 && idx < pips.length - 1 && p.value > pips[idx-1].value && p.value > pips[idx+1].value;
+                    return {
+                        time: p.time,
+                        position: isHigh ? 'aboveBar' : 'belowBar',
+                        color: '#eab308',
+                        shape: 'circle',
+                        text: `${p.time} ($${p.value.toFixed(2)})`
+                    };
+                });
+                pipSeries.setMarkers(markers);
             }
         }, CHART_UPDATE_DEBOUNCE_MS);
     });
+    
+    // Enable volume by default
+    toggleVolume(true);
 
     
     // Scale Optimization: Show exactly 60 candles by default regardless of timeframe
