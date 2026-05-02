@@ -350,6 +350,17 @@ function formatCurrency(value, ticker = '') {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 }
 
+// Format volume utility
+function formatCompactNumber(num) {
+    if (num >= 1e6) {
+        return (num / 1e6).toFixed(1) + 'M';
+    }
+    if (num >= 1e3) {
+        return (num / 1e3).toFixed(1) + 'K';
+    }
+    return num.toString();
+}
+
 async function renderPortfolio() {
     const tableBody = document.getElementById('portfolio-table-body');
     const summaryContainer = document.getElementById('portfolio-summary');
@@ -617,6 +628,7 @@ function findPIPs(candles) {
         index: i,
         time: c.time,
         value: c.close,
+        volume: c.volume,
         stdY: (c.close - stats.mean) / stats.std
     }));
     
@@ -672,7 +684,7 @@ function findPIPs(candles) {
     const bestPipIndices = pipIndexByOrder.slice(0, finalK);
     bestPipIndices.sort((a, b) => a - b);
     
-    return bestPipIndices.map(idx => ({ time: data[idx].time, value: data[idx].value }));
+    return bestPipIndices.map(idx => ({ time: data[idx].time, value: data[idx].value, volume: data[idx].volume }));
 }
 
 function generatePIPSignal(pips) {
@@ -948,7 +960,7 @@ async function fetchTwseCandles(ticker, tf) {
         high: d.max,
         low: d.min,
         close: d.close,
-        volume: d.trading_volume || 0
+        volume: d.Trading_Volume || d.trading_volume || 0
     }));
 
     if (tf !== '1day') {
@@ -1221,12 +1233,14 @@ function renderTradingViewChart(data) {
                 // Add distinct markers to PIPs with Date and Price
                 const markers = pips.map((p, idx) => {
                     const isHigh = idx > 0 && idx < pips.length - 1 && p.value > pips[idx-1].value && p.value > pips[idx+1].value;
+                    const dObj = new Date(p.time * 1000);
+                    const dateStr = `${dObj.getFullYear()}/${(dObj.getMonth()+1).toString().padStart(2,'0')}/${dObj.getDate().toString().padStart(2,'0')}`;
                     return {
                         time: p.time,
                         position: isHigh ? 'aboveBar' : 'belowBar',
                         color: '#eab308',
                         shape: 'circle',
-                        text: `${p.time} ($${p.value.toFixed(2)})`
+                        text: `${dateStr} | P: $${p.value.toFixed(2)} | V: ${formatCompactNumber(p.volume || 0)}`
                     };
                 });
                 pipSeries.setMarkers(markers);
