@@ -401,14 +401,19 @@ async function renderPortfolio() {
         }
 
         const row = document.createElement('tr');
+        row.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+        row.style.transition = 'background 0.2s';
         row.innerHTML = `
-            <td><span class="ticker-badge">${displayName}</span></td>
-            <td>${currentPrice ? formatCurrency(currentPrice, item.ticker) : '...'}</td>
-            <td>${formatCurrency(item.cost, item.ticker)}</td>
-            <td>${item.qty}</td>
-            <td class="${pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(pl, item.ticker)} (${plPercent.toFixed(2)}%)</td>
-            <td id="port-sig-${index}"><i class="fa-solid fa-spinner fa-spin" style="color: var(--text-secondary);"></i></td>
-            <td><button class="indicator-btn danger" style="padding: 4px 8px;" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
+            <td style="padding: 16px 12px;"><span class="ticker-badge" style="font-size: 0.95em;">${displayName}</span></td>
+            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${currentPrice ? formatCurrency(currentPrice, item.ticker) : '...'}</td>
+            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(item.cost, item.ticker)}</td>
+            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${item.qty}</td>
+            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;" class="${pl >= 0 ? 'positive' : 'negative'}">
+                <div style="font-weight: 500;">${formatCurrency(pl, item.ticker)}</div>
+                <div style="font-size: 0.85em; opacity: 0.8; margin-top: 2px;">${plPercent.toFixed(2)}%</div>
+            </td>
+            <td id="port-sig-${index}" style="padding: 16px 12px; text-align: center;"><i class="fa-solid fa-spinner fa-spin" style="color: var(--text-secondary);"></i></td>
+            <td style="padding: 16px 12px; text-align: center;"><button class="indicator-btn danger" style="padding: 6px 10px; opacity: 0.7;" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
         `;
         row.style.cursor = 'pointer';
         row.onclick = (e) => {
@@ -543,47 +548,116 @@ async function removeFromPortfolio(index, event) {
 }
 
 
-// --- AI Trading Signals Engine ---
-function findPIPs(candles, numPIPs = 7) {
-    if (candles.length <= numPIPs) {
-        return candles.map(c => ({ time: c.time, value: c.close }));
+// --- AI Trading Signals Engine (Dynamic PIP Algorithm) ---
+function standardizeData(data) {
+    if (data.length === 0) return { mean: 0, std: 1 };
+    const mean = data.reduce((sum, val) => sum + val, 0) / data.length;
+    const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
+    const std = Math.sqrt(variance) || 1; // prevent division by zero
+    return { mean, std };
+}
+
+function calcVerticalDistance(startX, startY, endX, endY, candX, candY) {
+    // Formula from research: vd = (((candX - startX) / (endX - startX)) * (endY - startY) + startY) - candY
+    // Then return Math.sqrt(vd^2) which is Math.abs(vd)
+    const vd = (((candX - startX) / (endX - startX)) * (endY - startY) + startY) - candY;
+    return Math.abs(vd);
+}
+
+function pipNumByMse(pipVdSumArray) {
+    if (pipVdSumArray.length < 3) return pipVdSumArray.length;
+    
+    const pipVdMvRange = [];
+    pipVdMvRange.push(0, 0); // Pad index 0 and 1 to align with lengths
+    
+    for (let i = 0; i < pipVdSumArray.length - 1; i++) {
+        // MvRange = sqrt((vdSum[i] - vdSum[i+1])^2) = abs difference
+        const mvRange = Math.abs(pipVdSumArray[i] - pipVdSumArray[i+1]);
+        pipVdMvRange.push(mvRange);
     }
     
-    // Map candles to include index for interpolation
-    let data = candles.map((c, i) => ({ index: i, time: c.time, value: c.close }));
-    let pips = [data[0], data[data.length - 1]];
+    // Average reduction
+    let sum = 0;
+    for(let i=2; i<pipVdMvRange.length; i++) sum += pipVdMvRange[i];
+    const mravg = sum / (pipVdMvRange.length - 2);
     
-    while (pips.length < numPIPs) {
-        pips.sort((a, b) => a.index - b.index);
-        let maxDist = -1;
-        let bestPoint = null;
+    let bestPipNum = pipVdSumArray.length;
+    // Find the cutoff where variance reduction falls below average
+    for (let k = 2; k < pipVdMvRange.length; k++) {
+        if (pipVdMvRange[k] > mravg) {
+            bestPipNum = k + 1; // Keep incrementing as long as it's better than avg
+        }
+    }
+    return bestPipNum + 1; // +1 to include the next point that just passed the threshold
+}
+
+function findPIPs(candles) {
+    const N = candles.length;
+    if (N < 5) return candles.map(c => ({ time: c.time, value: c.close }));
+    
+    const yValues = candles.map(c => c.close);
+    const stats = standardizeData(yValues);
+    
+    const data = candles.map((c, i) => ({
+        index: i,
+        time: c.time,
+        value: c.close,
+        stdY: (c.close - stats.mean) / stats.std
+    }));
+    
+    let pipH = 0;
+    let pipE = N - 1;
+    let pipIndexByOrder = [pipH, pipE];
+    let pipVdSum = [];
+    
+    // We limit max iterations to prevent O(N^3) stalling on giant datasets
+    const MAX_PIPS = Math.min(N, 150); 
+    
+    let pipNum = 2;
+    while (pipNum < MAX_PIPS) {
+        let maxVd = -1;
+        let pipCandidate = -1;
+        let vdSum = 0;
         
-        for (let i = 0; i < pips.length - 1; i++) {
-            let p1 = pips[i];
-            let p2 = pips[i + 1];
+        // Sort current pips chronologically to define segments
+        let currentPips = [...pipIndexByOrder].sort((a, b) => a - b);
+        
+        for (let i = 0; i < currentPips.length - 1; i++) {
+            let startIdx = currentPips[i];
+            let endIdx = currentPips[i+1];
             
-            for (let j = p1.index + 1; j < p2.index; j++) {
-                let p3 = data[j];
-                // Line equation: y = y1 + (y2-y1)*(x-x1)/(x2-x1)
-                let y_line = p1.value + (p2.value - p1.value) * (p3.index - p1.index) / (p2.index - p1.index);
-                let dist = Math.abs(p3.value - y_line);
+            let pStart = data[startIdx];
+            let pEnd = data[endIdx];
+            
+            for (let j = startIdx + 1; j < endIdx; j++) {
+                let pCand = data[j];
+                let vd = calcVerticalDistance(pStart.index, pStart.stdY, pEnd.index, pEnd.stdY, pCand.index, pCand.stdY);
+                vdSum += vd;
                 
-                if (dist > maxDist) {
-                    maxDist = dist;
-                    bestPoint = p3;
+                if (vd > maxVd) {
+                    maxVd = vd;
+                    pipCandidate = j;
                 }
             }
         }
         
-        if (bestPoint) {
-            pips.push(bestPoint);
-        } else {
-            break;
-        }
+        if (pipCandidate === -1) break;
+        
+        pipVdSum.push(vdSum);
+        pipIndexByOrder.push(pipCandidate);
+        pipNum++;
     }
     
-    pips.sort((a, b) => a.index - b.index);
-    return pips.map(p => ({ time: p.time, value: p.value }));
+    // Optimize K via MSE
+    const bestK = pipNumByMse(pipVdSum);
+    
+    // Safety clamp
+    const finalK = Math.min(Math.max(bestK, 3), pipIndexByOrder.length);
+    
+    const bestPipIndices = pipIndexByOrder.slice(0, finalK);
+    bestPipIndices.sort((a, b) => a - b);
+    
+    return bestPipIndices.map(idx => ({ time: data[idx].time, value: data[idx].value }));
 }
 
 function generatePIPSignal(pips) {
@@ -608,7 +682,9 @@ async function evaluatePortfolioSignal(ticker, index) {
         if (!sigTd) return;
         
         if (history && history.candles && history.candles.length > 7) {
-            const pips = findPIPs(history.candles, 7);
+            // Slice last 120 candles for recent trend evaluation
+            const recentCandles = history.candles.slice(-120);
+            const pips = findPIPs(recentCandles);
             const signal = generatePIPSignal(pips);
             sigTd.innerHTML = `<span style="color: ${signal.color}; font-weight: bold; font-size: 0.9em;">${signal.text}</span>`;
         } else {
@@ -1111,10 +1187,24 @@ function renderTradingViewChart(data) {
         crosshairMarkerVisible: true
     });
     
-    if (data.length > 7) {
-        const pips = findPIPs(data, 7);
-        pipSeries.setData(pips);
-    }
+    // Dynamic PIP update on visible range change
+    let pipTimeout = null;
+    currentStockChart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
+        if (!logicalRange || !data || data.length === 0) return;
+        
+        // Debounce calculation to maintain 60fps
+        if (pipTimeout) clearTimeout(pipTimeout);
+        pipTimeout = setTimeout(() => {
+            const startIdx = Math.max(0, Math.floor(logicalRange.from));
+            const endIdx = Math.min(data.length - 1, Math.ceil(logicalRange.to));
+            
+            if (endIdx - startIdx > 5) {
+                const visibleData = data.slice(startIdx, endIdx + 1);
+                const pips = findPIPs(visibleData);
+                pipSeries.setData(pips);
+            }
+        }, 150);
+    });
 
     
     // Scale Optimization: Show exactly 60 candles by default regardless of timeframe

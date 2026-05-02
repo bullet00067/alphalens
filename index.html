@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Stock Assistant</title>
+    <title>AlphaLens - AI Investment Dashboard</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome for icons -->
@@ -16,7 +16,7 @@
         <nav class="sidebar">
             <div class="logo">
                 <i class="fa-solid fa-chart-line"></i>
-                <span>InvestAI</span>
+                <span>AlphaLens</span>
             </div>
             <ul class="nav-links">
                 <li class="active" data-target="dashboard-view"><i class="fa-solid fa-border-all"></i> Dashboard</li>
@@ -142,14 +142,14 @@
                         <h3 style="margin-bottom: 20px;">Current Holdings</h3>
                         <table style="width: 100%; border-collapse: collapse; color: var(--text-primary);">
                             <thead>
-                                <tr style="text-align: left; border-bottom: 1px solid var(--border-glass); color: var(--text-secondary);">
-                                    <th style="padding: 12px;">Ticker</th>
-                                    <th style="padding: 12px;">Last Price</th>
-                                    <th style="padding: 12px;">Avg Cost</th>
-                                    <th style="padding: 12px;">Qty</th>
-                                    <th style="padding: 12px;">P/L ($/%)</th>
-                                    <th style="padding: 12px;">Signal</th>
-                                    <th style="padding: 12px;">Action</th>
+                                <tr style="text-align: left; border-bottom: 2px solid var(--border-glass); color: var(--text-secondary); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <th style="padding: 16px 12px; font-weight: 600;">Ticker</th>
+                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">Last Price</th>
+                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">Avg Cost</th>
+                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">Qty</th>
+                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">P/L ($/%)</th>
+                                    <th style="padding: 16px 12px; font-weight: 600; text-align: center;">Signal</th>
+                                    <th style="padding: 16px 12px; font-weight: 600; text-align: center;">Action</th>
                                 </tr>
                             </thead>
                             <tbody id="portfolio-table-body">
