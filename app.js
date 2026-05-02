@@ -403,8 +403,20 @@ async function renderPortfolio() {
         const row = document.createElement('tr');
         row.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
         row.style.transition = 'background 0.2s';
+        
+        // Escape potentially malicious ticker names (XSS prevention)
+        const escapeHtml = (unsafe) => {
+            return (unsafe || '').toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        };
+        const safeDisplayName = escapeHtml(displayName);
+        
         row.innerHTML = `
-            <td style="padding: 16px 12px;"><span class="ticker-badge" style="font-size: 0.95em;">${displayName}</span></td>
+            <td style="padding: 16px 12px;"><span class="ticker-badge" style="font-size: 0.95em;">${safeDisplayName}</span></td>
             <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${currentPrice ? formatCurrency(currentPrice, item.ticker) : '...'}</td>
             <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(item.cost, item.ticker)}</td>
             <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${item.qty}</td>
@@ -564,11 +576,13 @@ function calcVerticalDistance(startX, startY, endX, endY, candX, candY) {
     return Math.abs(vd);
 }
 
+const PIP_MAX_ITERATIONS = 150;
+const CHART_UPDATE_DEBOUNCE_MS = 150;
+
 function pipNumByMse(pipVdSumArray) {
     if (pipVdSumArray.length < 3) return pipVdSumArray.length;
     
     const pipVdMvRange = [];
-    pipVdMvRange.push(0, 0); // Pad index 0 and 1 to align with lengths
     
     for (let i = 0; i < pipVdSumArray.length - 1; i++) {
         // MvRange = sqrt((vdSum[i] - vdSum[i+1])^2) = abs difference
@@ -577,18 +591,19 @@ function pipNumByMse(pipVdSumArray) {
     }
     
     // Average reduction
-    let sum = 0;
-    for(let i=2; i<pipVdMvRange.length; i++) sum += pipVdMvRange[i];
-    const mravg = sum / (pipVdMvRange.length - 2);
+    const sum = pipVdMvRange.reduce((acc, val) => acc + val, 0);
+    const mravg = sum / pipVdMvRange.length;
     
     let bestPipNum = pipVdSumArray.length;
     // Find the cutoff where variance reduction falls below average
-    for (let k = 2; k < pipVdMvRange.length; k++) {
+    for (let k = 0; k < pipVdMvRange.length; k++) {
         if (pipVdMvRange[k] > mravg) {
-            bestPipNum = k + 1; // Keep incrementing as long as it's better than avg
+            // k=0 is difference between 3 and 4 pips. 
+            // So if k=0 > mravg, we should at least use 4 pips.
+            bestPipNum = k + 4; // Map k index to pip count
         }
     }
-    return bestPipNum + 1; // +1 to include the next point that just passed the threshold
+    return bestPipNum;
 }
 
 function findPIPs(candles) {
@@ -611,7 +626,7 @@ function findPIPs(candles) {
     let pipVdSum = [];
     
     // We limit max iterations to prevent O(N^3) stalling on giant datasets
-    const MAX_PIPS = Math.min(N, 150); 
+    const MAX_PIPS = Math.min(N, PIP_MAX_ITERATIONS); 
     
     let pipNum = 2;
     while (pipNum < MAX_PIPS) {
@@ -1203,7 +1218,7 @@ function renderTradingViewChart(data) {
                 const pips = findPIPs(visibleData);
                 pipSeries.setData(pips);
             }
-        }, 150);
+        }, CHART_UPDATE_DEBOUNCE_MS);
     });
 
     
