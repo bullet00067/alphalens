@@ -8,8 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js for charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 </head>
 <body>
     <div class="app-container">
@@ -23,8 +22,20 @@
                 <li class="active" data-target="dashboard-view"><i class="fa-solid fa-border-all"></i> Dashboard</li>
                 <li data-target="portfolio-view"><i class="fa-solid fa-wallet"></i> Portfolio</li>
                 <li data-target="assistant-view"><i class="fa-solid fa-robot"></i> AI Assistant</li>
-                <li data-target="settings-view"><i class="fa-solid fa-gear"></i> Settings</li>
             </ul>
+
+            <div class="auth-section" style="margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border-glass);">
+                <div id="user-info" style="display: none; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <img id="user-avatar" src="" alt="User" style="width: 32px; height: 32px; border-radius: 50%;">
+                    <span id="user-name" style="font-size: 14px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;"></span>
+                </div>
+                <button id="btn-login" class="indicator-btn" style="width: 100%; justify-content: center; background: var(--accent-primary); color: white;">
+                    <i class="fa-brands fa-google"></i> Sign In
+                </button>
+                <button id="btn-logout" class="indicator-btn danger" style="display: none; width: 100%; justify-content: center;">
+                    <i class="fa-solid fa-sign-out-alt"></i> Sign Out
+                </button>
+            </div>
         </nav>
 
         <!-- Main Content -->
@@ -57,7 +68,18 @@
 
                 <div class="dashboard-grid">
                     <div class="trending-stocks glass-panel">
-                        <h3>Trending Stocks</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="margin: 0;">My Watchlist</h3>
+                            <div class="market-tabs" id="watchlist-tabs" style="display: flex; gap: 8px;">
+                                <button class="tab-btn active" onclick="setMarketTab('ALL')">All</button>
+                                <button class="tab-btn" onclick="setMarketTab('US')">US</button>
+                                <button class="tab-btn" onclick="setMarketTab('TW')">TW</button>
+                            </div>
+                        </div>
+                        <div class="input-group" style="margin-bottom: 16px; margin-top: 0;">
+                            <input type="text" id="add-watchlist-input" placeholder="Add Ticker (e.g. TSLA, 2330)">
+                            <button id="add-watchlist-btn" class="primary-btn" style="padding: 10px;"><i class="fa-solid fa-plus"></i></button>
+                        </div>
                         <ul id="trending-list" class="stock-list">
                             <!-- List populated by JS -->
                         </ul>
@@ -67,6 +89,71 @@
                         <ul id="news-list" class="news-list">
                             <!-- List populated by JS -->
                         </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Portfolio View -->
+            <section id="portfolio-view" class="view">
+                <div class="view-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <h1>My Portfolio</h1>
+                        <p>Track your holdings and AI-driven trade signals.</p>
+                    </div>
+                    <div class="market-tabs" id="portfolio-tabs" style="display: flex; gap: 8px; margin-bottom: 16px;">
+                        <button class="tab-btn active" onclick="setMarketTab('ALL')">All</button>
+                        <button class="tab-btn" onclick="setMarketTab('US')">US</button>
+                        <button class="tab-btn" onclick="setMarketTab('TW')">TW</button>
+                    </div>
+                </div>
+
+                <!-- Portfolio Summary Card -->
+                <div id="portfolio-summary" style="display: flex; gap: 16px; margin-bottom: 24px;">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div class="stock-detail-grid">
+                    <!-- Add to Portfolio Form -->
+                    <div class="glass-panel" style="padding: 24px;">
+                        <h3 style="margin-bottom: 20px;">Add New Holding</h3>
+                        <div style="display: flex; flex-direction: column; gap: 16px;">
+                            <div class="search-box" style="width: 100%; max-width: none;">
+                                <i class="fa-solid fa-tag"></i>
+                                <input type="text" id="port-ticker" placeholder="Ticker (e.g. AAPL or 2330)..." style="width: 100%;">
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div class="search-box" style="width: 100%; max-width: none;">
+                                    <i class="fa-solid fa-dollar-sign"></i>
+                                    <input type="number" id="port-cost" placeholder="Avg Cost..." step="0.01" style="width: 100%;">
+                                </div>
+                                <div class="search-box" style="width: 100%; max-width: none;">
+                                    <i class="fa-solid fa-layer-group"></i>
+                                    <input type="number" id="port-qty" placeholder="Quantity..." style="width: 100%;">
+                                </div>
+                            </div>
+                            <button class="indicator-btn" style="width: 100%; justify-content: center; background: var(--accent-primary); color: white;" onclick="addToPortfolioFromForm()">
+                                <i class="fa-solid fa-plus"></i> Add to Portfolio
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Portfolio Table -->
+                    <div class="glass-panel" style="padding: 24px; overflow-x: auto;">
+                        <h3 style="margin-bottom: 20px;">Current Holdings</h3>
+                        <table style="width: 100%; border-collapse: collapse; color: var(--text-primary);">
+                            <thead>
+                                <tr style="text-align: left; border-bottom: 1px solid var(--border-glass); color: var(--text-secondary);">
+                                    <th style="padding: 12px;">Ticker</th>
+                                    <th style="padding: 12px;">Last Price</th>
+                                    <th style="padding: 12px;">Avg Cost</th>
+                                    <th style="padding: 12px;">P/L ($/%)</th>
+                                    <th style="padding: 12px;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portfolio-table-body">
+                                <!-- Portfolio items will be rendered here -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>
@@ -85,8 +172,33 @@
                 </div>
 
                 <div class="stock-detail-grid">
-                    <div class="chart-container glass-panel">
-                        <canvas id="stockChart"></canvas>
+                    <div class="chart-container glass-panel" style="padding: 12px; display: flex; flex-direction: column;">
+                        <div id="timeframe-bar" style="display: flex; gap: 6px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-glass);">
+                            <button class="tf-btn" data-tf="15min">15m</button>
+                            <button class="tf-btn" data-tf="1h">60m</button>
+                            <button class="tf-btn active" data-tf="1day">Day</button>
+                            <button class="tf-btn" data-tf="1week">Week</button>
+                            <button class="tf-btn" data-tf="1month">Month</button>
+                            <button class="tf-btn" data-tf="1year">Year</button>
+                        </div>
+                        <div class="chart-toolbar" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-glass); align-items: center;">
+                            <span style="font-size: 12px; color: var(--text-secondary); margin-right: 4px;">SMA</span>
+                            <button class="indicator-btn" data-type="sma" data-period="5">5</button>
+                            <button class="indicator-btn" data-type="sma" data-period="20">20</button>
+                            <button class="indicator-btn" data-type="sma" data-period="60">60</button>
+                            <button class="indicator-btn" data-type="sma" data-period="120">120</button>
+                            <div style="width:1px; height:20px; background: var(--border-glass); margin: 0 4px;"></div>
+                            <span style="font-size: 12px; color: var(--text-secondary); margin-right: 4px;">EMA</span>
+                            <button class="indicator-btn" data-type="ema" data-period="12">12</button>
+                            <button class="indicator-btn" data-type="ema" data-period="26">26</button>
+                            <div style="width:1px; height:20px; background: var(--border-glass); margin: 0 4px;"></div>
+                            <button class="indicator-btn" data-type="boll" data-period="20">BOLL</button>
+                            <button class="indicator-btn" data-type="vol">VOL</button>
+                            <button class="indicator-btn" data-type="rsi" data-period="14">RSI</button>
+                            <button class="indicator-btn danger" id="clear-indicators-btn" style="margin-left: auto;">Clear All</button>
+                        </div>
+                        <div id="stockChart" style="width: 100%; min-height: 360px;"></div>
+                        <div id="rsiChart" style="width: 100%; min-height: 120px; display: none; margin-top: 4px; border-top: 1px solid var(--border-glass);"></div>
                     </div>
                     
                     <div class="stats-container glass-panel">
@@ -94,12 +206,17 @@
                         <div class="stats-grid" id="stats-grid">
                             <!-- Populated by JS -->
                         </div>
+                        <div id="ai-signal-card" style="display: none;">
+                            <!-- AI Trade Signals will appear here -->
+                        </div>
                     </div>
                 </div>
 
                 <div class="ai-analysis-container glass-panel mt-4">
                     <h3>AI Quick Analysis</h3>
-                    <p id="ai-quick-summary">Loading analysis...</p>
+                    <div id="ai-quick-summary" style="margin-top: 15px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+                        Loading analysis...
+                    </div>
                     <button class="secondary-btn mt-2" id="deep-dive-btn">Deep Dive in Chat</button>
                 </div>
             </section>
@@ -126,8 +243,9 @@
                 </div>
             </section>
 
+
         </main>
     </div>
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+
+# API Keys - NEVER commit these!
+.env
+.env.local
+.env.production

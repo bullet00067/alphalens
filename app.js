@@ -1,37 +1,68 @@
-// Mock Data
-const marketIndices = [
-    { name: 'S&P 500', price: '5,087.03', change: '+1.2%', isPositive: true },
-    { name: 'NASDAQ', price: '15,996.82', change: '+1.5%', isPositive: true },
-    { name: 'Dow Jones', price: '39,069.11', change: '+0.8%', isPositive: true },
-    { name: 'Russell 2000', price: '2,016.69', change: '-0.3%', isPositive: false }
-];
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc } from "firebase/firestore";
 
-const trendingStocks = [
-    { ticker: 'NVDA', name: 'NVIDIA Corp', price: '$788.17', change: '+16.4%', isPositive: true },
-    { ticker: 'AAPL', name: 'Apple Inc', price: '$189.43', change: '+1.2%', isPositive: true },
-    { ticker: 'TSLA', name: 'Tesla Inc', price: '$191.97', change: '-2.1%', isPositive: false },
-    { ticker: 'MSFT', name: 'Microsoft Corp', price: '$410.34', change: '+0.5%', isPositive: true },
-    { ticker: 'AMD', name: 'Advanced Micro Devices', price: '$176.42', change: '+4.2%', isPositive: true }
-];
+const firebaseConfig = {
+  apiKey: "AIzaSyAz5NDBefbtYQG9k7SHuaSwbGuGv54S-fM",
+  authDomain: "bulletstock-71dcf.firebaseapp.com",
+  projectId: "bulletstock-71dcf",
+  storageBucket: "bulletstock-71dcf.firebasestorage.app",
+  messagingSenderId: "108669191427",
+  appId: "1:108669191427:web:e3c85d99969b1d45d39536",
+  measurementId: "G-WZK0MKVB98"
+};
 
-const mockNews = [
-    { title: 'Fed Signals Potential Rate Cuts Later This Year', source: 'Financial Times', time: '2 hours ago' },
-    { title: 'Tech Stocks Rally on Strong AI Demand', source: 'Wall Street Journal', time: '4 hours ago' },
-    { title: 'Oil Prices Dip as Global Supply Increases', source: 'Bloomberg', time: '5 hours ago' },
-    { title: 'New EV Regulations Announced in Europe', source: 'Reuters', time: '6 hours ago' }
-];
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+let currentUser = null;
 
-// App State
+// State
+const defaultWatchlist = ['AAPL', 'TSLA', '2330', 'NVDA'];
+let currentWatchlist = []; // Loaded from Firebase or local
 let currentStockChart = null;
+let candlestickSeries = null;
+let smaSeriesList = [];
+let currentChartData = []; // Store OHLC data for indicator calculation
+let currentTimeframe = '1day';
+let currentTicker = null;
+let currentPortfolio = []; // Will be loaded from Firebase
+let currentMarketTab = 'ALL'; // 'ALL', 'US', 'TW'
+const twStockNames = {}; // Cache for Taiwan stock names
+
+// API Keys (from .env via Vite)
+const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+const TWELVEDATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
+
+// API Bases
+const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data';
+const FINNHUB_BASE = 'https://finnhub.io/api/v1';
+const TWELVEDATA_BASE = 'https://api.twelvedata.com';
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
+    initAuth();
     initNavigation();
+    initSettings();
+    initWatchlist();
     populateDashboard();
     initChat();
     setupSearch();
+    initIndicators();
+    initTimeframeSwitcher();
+    initPortfolio();
     
-    // Setup Action Buttons
+    // Expose functions for inline onclick handlers (must be after function definitions)
+    window.loadStockDetail = loadStockDetail;
+    window.removeFromWatchlist = removeFromWatchlist;
+    window.removeFromPortfolio = removeFromPortfolio;
+    window.addToPortfolioFromForm = addToPortfolioFromForm;
+    window.signInWithGoogle = signInWithGoogle;
+    window.signOutUser = signOutUser;
+    window.setMarketTab = setMarketTab;
+    
     document.getElementById('ask-ai-banner-btn').addEventListener('click', () => {
         switchView('assistant-view');
         addAiMessage("I can analyze the current market for you. Overall, the market is bullish today driven by tech stocks. What specific sector would you like me to look into?");
@@ -40,20 +71,37 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('deep-dive-btn').addEventListener('click', () => {
         const ticker = document.getElementById('detail-ticker').textContent;
         switchView('assistant-view');
-        addAiMessage(`Let's take a deep dive into ${ticker}. What specific metrics or risks are you concerned about?`);
+        addAiMessage(`Let's take a deep dive into ${ticker}. You can ask me to draw technical indicators like "Draw 20 MA" or "Draw 5 MA".`);
     });
 });
+
+// Settings Logic - show status of .env keys
+function initSettings() {
+    const finnhubStatus = document.getElementById('finnhub-key-status');
+    const geminiStatus = document.getElementById('gemini-key-status');
+    if (finnhubStatus) {
+        if (FINNHUB_API_KEY) {
+            finnhubStatus.innerHTML = '<span class="positive"><i class="fa-solid fa-circle-check"></i> Key loaded from .env</span>';
+        } else {
+            finnhubStatus.innerHTML = '<span class="negative"><i class="fa-solid fa-circle-xmark"></i> Not set — Taiwan stocks still work!</span>';
+        }
+    }
+    if (geminiStatus) {
+        if (GEMINI_API_KEY) {
+            geminiStatus.innerHTML = '<span class="positive"><i class="fa-solid fa-circle-check"></i> Key loaded from .env</span>';
+        } else {
+            geminiStatus.innerHTML = '<span class="negative"><i class="fa-solid fa-circle-xmark"></i> Not set — AI will use mock responses</span>';
+        }
+    }
+}
 
 // Navigation Logic
 function initNavigation() {
     const navLinks = document.querySelectorAll('.nav-links li');
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
-            // Update active nav state
             navLinks.forEach(l => l.classList.remove('active'));
             e.currentTarget.classList.add('active');
-            
-            // Switch view
             const targetId = e.currentTarget.getAttribute('data-target');
             if(targetId) switchView(targetId);
         });
@@ -63,54 +111,587 @@ function initNavigation() {
 function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
     document.getElementById(viewId).classList.add('active-view');
-    
-    // Update nav state if called programmatically
     document.querySelectorAll('.nav-links li').forEach(l => {
-        if(l.getAttribute('data-target') === viewId) {
-            l.classList.add('active');
+        if(l.getAttribute('data-target') === viewId) l.classList.add('active');
+        else l.classList.remove('active');
+    });
+}
+
+// Check if ticker is TW
+function isTaiwanStock(ticker) {
+    return /^\d{4,6}$/.test(ticker) || ticker.endsWith('.TW') || ticker.endsWith('.TWO');
+}
+
+function cleanTwTicker(ticker) {
+    return ticker.replace('.TW', '').replace('.TWO', '');
+}
+
+async function getQuickQuote(ticker) {
+    if (isTaiwanStock(ticker)) {
+        const cleanTicker = cleanTwTicker(ticker);
+        const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${cleanTicker}&start_date=${new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0]}`);
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+            const latest = data.data[data.data.length - 1];
+            return { price: latest.close, change: latest.spread, d: (latest.spread / (latest.close - latest.spread)) * 100 };
+        }
+    } else {
+        const res = await fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`);
+        const data = await res.json();
+        return { price: data.c, change: data.d, d: data.dp };
+    }
+    return null;
+}
+
+// --- Auth Logic ---
+function initAuth() {
+    const btnLogin = document.getElementById('btn-login');
+    const btnLogout = document.getElementById('btn-logout');
+    const userInfo = document.getElementById('user-info');
+    const userAvatar = document.getElementById('user-avatar');
+    const userName = document.getElementById('user-name');
+
+    if (btnLogin) btnLogin.addEventListener('click', signInWithGoogle);
+    if (btnLogout) btnLogout.addEventListener('click', signOutUser);
+
+    onAuthStateChanged(auth, async (user) => {
+        currentUser = user;
+        if (user) {
+            // Logged in
+            if (btnLogin) btnLogin.style.display = 'none';
+            if (userInfo) userInfo.style.display = 'flex';
+            if (btnLogout) btnLogout.style.display = 'flex';
+            if (userAvatar) userAvatar.src = user.photoURL || 'https://via.placeholder.com/32';
+            if (userName) userName.textContent = user.displayName || user.email;
+            
+            showToast(`Welcome, ${user.displayName || user.email}`);
+            await fetchCloudWatchlist(user.uid);
+            await fetchCloudPortfolio(user.uid);
         } else {
-            l.classList.remove('active');
+            // Logged out
+            if (btnLogin) btnLogin.style.display = 'flex';
+            if (userInfo) userInfo.style.display = 'none';
+            if (btnLogout) btnLogout.style.display = 'none';
+            
+            currentPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || [];
+            portfolioQuotes = {};
+            currentWatchlist = JSON.parse(localStorage.getItem('myWatchlist')) || defaultWatchlist;
+            renderPortfolio();
+            populateDashboard(); // Re-render watchlist
+            fetchPortfolioQuotes(); // Fetch quotes for local portfolio
         }
     });
 }
 
+async function signInWithGoogle() {
+    const provider = new GoogleAuthProvider();
+    try {
+        await signInWithPopup(auth, provider);
+    } catch (error) {
+        console.error("Auth Error:", error);
+        showToast("Login failed: " + error.message);
+    }
+}
+
+async function signOutUser() {
+    try {
+        await signOut(auth);
+        showToast("Logged out successfully");
+    } catch (error) {
+        console.error("Sign Out Error:", error);
+    }
+}
+
+// --- Cloud DB Logic ---
+async function fetchCloudPortfolio(uid) {
+    try {
+        const querySnapshot = await getDocs(collection(db, `users/${uid}/portfolio`));
+        currentPortfolio = [];
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            currentPortfolio.push({
+                docId: doc.id,
+                ticker: data.ticker,
+                cost: data.cost,
+                qty: data.qty,
+                date: data.date
+            });
+        });
+        await fetchPortfolioQuotes();
+    } catch (error) {
+        console.error("Fetch DB Error:", error);
+        showToast("Failed to load portfolio");
+    }
+}
+
+async function addCloudPortfolio(uid, ticker, cost, qty) {
+    try {
+        const newDocRef = doc(collection(db, `users/${uid}/portfolio`));
+        const data = { ticker, cost, qty, date: new Date().toISOString() };
+        await setDoc(newDocRef, data);
+        currentPortfolio.push({ docId: newDocRef.id, ...data });
+        await fetchPortfolioQuotes();
+    } catch (error) {
+        console.error("Add DB Error:", error);
+        showToast("Failed to add holding");
+    }
+}
+
+async function removeCloudPortfolio(uid, index) {
+    const item = currentPortfolio[index];
+    if (!item || !item.docId) return;
+    try {
+        await deleteDoc(doc(db, `users/${uid}/portfolio`, item.docId));
+        currentPortfolio.splice(index, 1);
+        renderPortfolio();
+    } catch (error) {
+        console.error("Delete DB Error:", error);
+        showToast("Failed to remove holding");
+    }
+}
+
+async function fetchCloudWatchlist(uid) {
+    try {
+        const docRef = doc(db, `users/${uid}/settings`, 'watchlist');
+        const docSnap = await getDocs(collection(db, `users/${uid}/settings`));
+        let found = false;
+        docSnap.forEach(d => {
+            if (d.id === 'watchlist') {
+                currentWatchlist = d.data().list || [];
+                found = true;
+            }
+        });
+        if (!found) {
+            currentWatchlist = defaultWatchlist;
+            await setDoc(docRef, { list: currentWatchlist });
+        }
+        populateDashboard();
+    } catch (error) {
+        console.error("Fetch DB Error:", error);
+    }
+}
+
+async function saveCloudWatchlist(uid) {
+    try {
+        await setDoc(doc(db, `users/${uid}/settings`, 'watchlist'), { list: currentWatchlist });
+    } catch (error) {
+        console.error("Save DB Error:", error);
+    }
+}
+
+// --- Portfolio Logic ---
+let portfolioQuotes = {};
+
+async function fetchPortfolioQuotes() {
+    if (currentPortfolio.length === 0) {
+        renderPortfolio();
+        return;
+    }
+    const promises = currentPortfolio.map(item => getQuickQuote(item.ticker));
+    const results = await Promise.all(promises);
+    currentPortfolio.forEach((item, index) => {
+        if (results[index]) {
+            portfolioQuotes[item.ticker] = results[index];
+        }
+    });
+    renderPortfolio();
+}
+
+function initPortfolio() {
+    // Handled by auth state change
+}
+
+// Market Tabs Logic
+function setMarketTab(tabName) {
+    currentMarketTab = tabName;
+    document.querySelectorAll('.market-tabs .tab-btn').forEach(btn => {
+        if (btn.textContent.toUpperCase() === tabName || (btn.textContent === 'All' && tabName === 'ALL')) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    renderPortfolio();
+    populateDashboard();
+}
+
+// Fetch Taiwan Stock Name
+async function getTaiwanStockName(ticker) {
+    if (!isTaiwanStock(ticker)) return '';
+    if (twStockNames[ticker]) return twStockNames[ticker];
+    try {
+        const response = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${ticker}`);
+        const data = await response.json();
+        if (data && data.data && data.data.length > 0) {
+            twStockNames[ticker] = data.data[0].stock_name;
+            return twStockNames[ticker];
+        }
+    } catch (e) {
+        console.error("Failed to fetch TW stock name:", e);
+    }
+    return '';
+}
+
+// Format Currency Utility
+function formatCurrency(value, ticker = '') {
+    if (ticker && isTaiwanStock(ticker)) {
+        return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(value);
+    }
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+}
+
+async function renderPortfolio() {
+    const tableBody = document.getElementById('portfolio-table-body');
+    const summaryContainer = document.getElementById('portfolio-summary');
+    if (!tableBody) return;
+
+    let displayPortfolio = currentPortfolio;
+    if (currentMarketTab === 'US') {
+        displayPortfolio = currentPortfolio.filter(item => !isTaiwanStock(item.ticker));
+    } else if (currentMarketTab === 'TW') {
+        displayPortfolio = currentPortfolio.filter(item => isTaiwanStock(item.ticker));
+    }
+
+    if (displayPortfolio.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 30px;">No holdings in this market.</td></tr>';
+        if (summaryContainer) summaryContainer.innerHTML = '';
+        return;
+    }
+
+    tableBody.innerHTML = '';
+    let usEquity = 0, usCost = 0;
+    let twEquity = 0, twCost = 0;
+
+    for (let index = 0; index < currentPortfolio.length; index++) {
+        const item = currentPortfolio[index];
+        // Only render if it matches the tab filter
+        const isTW = isTaiwanStock(item.ticker);
+        if (currentMarketTab === 'US' && isTW) continue;
+        if (currentMarketTab === 'TW' && !isTW) continue;
+
+        const quote = portfolioQuotes[item.ticker];
+        const currentPrice = quote ? quote.price : 0;
+        const equity = currentPrice * item.qty;
+        const costValue = item.cost * item.qty;
+        const pl = equity - costValue;
+        const plPercent = costValue !== 0 ? (pl / costValue) * 100 : 0;
+        
+        if (isTW) {
+            twEquity += equity;
+            twCost += costValue;
+        } else {
+            usEquity += equity;
+            usCost += costValue;
+        }
+
+        let displayName = item.ticker;
+        if (isTW) {
+            const name = await getTaiwanStockName(item.ticker);
+            if (name) displayName = `${item.ticker} ${name}`;
+        }
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><span class="ticker-badge">${displayName}</span></td>
+            <td>${currentPrice ? formatCurrency(currentPrice, item.ticker) : '...'}</td>
+            <td>${formatCurrency(item.cost, item.ticker)}</td>
+            <td class="${pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(pl, item.ticker)} (${plPercent.toFixed(2)}%)</td>
+            <td><button class="indicator-btn danger" style="padding: 4px 8px;" onclick="removeFromPortfolio(${index})"><i class="fa-solid fa-trash"></i></button></td>
+        `;
+        row.style.cursor = 'pointer';
+        row.onclick = (e) => {
+            if (e.target.closest('button')) return;
+            loadStockDetail(item.ticker);
+        };
+        tableBody.appendChild(row);
+    }
+
+    if (summaryContainer) {
+        let html = '';
+        if (currentMarketTab === 'ALL' || currentMarketTab === 'US') {
+            const usPL = usEquity - usCost;
+            const usPLPercent = usCost !== 0 ? (usPL / usCost) * 100 : 0;
+            html += `
+                <div class="stat-card glass-panel" style="flex: 1; padding: 20px;">
+                    <span class="stat-label">US Total Equity</span>
+                    <span class="stat-value">${formatCurrency(usEquity, 'AAPL')}</span>
+                </div>
+                <div class="stat-card glass-panel" style="flex: 1; padding: 20px;">
+                    <span class="stat-label">US Total P/L</span>
+                    <span class="stat-value ${usPL >= 0 ? 'positive' : 'negative'}">
+                        ${formatCurrency(usPL, 'AAPL')} (${usPLPercent.toFixed(2)}%)
+                    </span>
+                </div>
+            `;
+        }
+        if (currentMarketTab === 'ALL' || currentMarketTab === 'TW') {
+            const twPL = twEquity - twCost;
+            const twPLPercent = twCost !== 0 ? (twPL / twCost) * 100 : 0;
+            html += `
+                <div class="stat-card glass-panel" style="flex: 1; padding: 20px;">
+                    <span class="stat-label">TW Total Equity</span>
+                    <span class="stat-value">${formatCurrency(twEquity, '2330')}</span>
+                </div>
+                <div class="stat-card glass-panel" style="flex: 1; padding: 20px;">
+                    <span class="stat-label">TW Total P/L</span>
+                    <span class="stat-value ${twPL >= 0 ? 'positive' : 'negative'}">
+                        ${formatCurrency(twPL, '2330')} (${twPLPercent.toFixed(2)}%)
+                    </span>
+                </div>
+            `;
+        }
+        summaryContainer.innerHTML = html;
+    }
+}
+
+async function addToPortfolioFromForm() {
+    const ticker = document.getElementById('port-ticker').value.toUpperCase().trim();
+    const cost = parseFloat(document.getElementById('port-cost').value);
+    const qty = parseInt(document.getElementById('port-qty').value);
+
+    if (!ticker || isNaN(cost) || isNaN(qty)) {
+        showToast("Please enter valid Ticker, Cost, and Quantity");
+        return;
+    }
+
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+    btn.disabled = true;
+
+    if (currentUser) {
+        await addCloudPortfolio(currentUser.uid, ticker, cost, qty);
+    } else {
+        const data = { ticker, cost, qty, date: new Date().toISOString() };
+        currentPortfolio.push(data);
+        localStorage.setItem('myPortfolio', JSON.stringify(currentPortfolio));
+        fetchPortfolioQuotes();
+        showToast(`Added ${ticker} to local portfolio`);
+    }
+    
+    btn.innerHTML = originalHtml;
+    btn.disabled = false;
+    
+    // Sync to Watchlist if not exists
+    if (!currentWatchlist.includes(ticker)) {
+        currentWatchlist.push(ticker);
+        saveWatchlist();
+        populateDashboard();
+    }
+    
+    // Clear form
+    document.getElementById('port-ticker').value = '';
+    document.getElementById('port-cost').value = '';
+    document.getElementById('port-qty').value = '';
+    showToast(`Added ${ticker} to portfolio`);
+}
+
+async function removeFromPortfolio(index) {
+    if (confirm('Are you sure you want to remove this holding?')) {
+        if (currentUser) {
+            await removeCloudPortfolio(currentUser.uid, index);
+            showToast("Removed from cloud portfolio");
+        } else {
+            currentPortfolio.splice(index, 1);
+            localStorage.setItem('myPortfolio', JSON.stringify(currentPortfolio));
+            renderPortfolio();
+            showToast("Removed from local portfolio");
+        }
+    }
+}
+
+
+// --- AI Trading Signals Engine ---
+function calcATR(candles, period = 14) {
+    if (candles.length < period + 1) return 0;
+    
+    const trs = [];
+    for (let i = 1; i < candles.length; i++) {
+        const h = candles[i].high;
+        const l = candles[i].low;
+        const pc = candles[i-1].close;
+        const tr = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+        trs.push(tr);
+    }
+    
+    // Simple average of TR
+    const latestTRs = trs.slice(-period);
+    return latestTRs.reduce((a, b) => a + b, 0) / period;
+}
+
+function calculateAISignals(ticker, candles) {
+    const portfolioItem = currentPortfolio.find(p => p.ticker === ticker);
+    const atr = calcATR(candles, 14);
+    const lastPrice = candles[candles.length - 1].close;
+    
+    if (!atr) return null;
+
+    const entryPrice = portfolioItem ? portfolioItem.cost : lastPrice;
+    const qty = portfolioItem ? portfolioItem.qty : 0;
+    
+    // Stop Loss (2*ATR)
+    const stopLoss = entryPrice - (2 * atr);
+    const riskPerShare = entryPrice - stopLoss;
+    
+    // Targets
+    const tp1 = entryPrice + (2 * riskPerShare); // 1:2
+    const tp2 = entryPrice + (3 * riskPerShare); // 1:3
+    
+    // Projected P/L
+    const slImpact = qty * (stopLoss - entryPrice);
+    const tp1Impact = qty * (tp1 - entryPrice);
+    const tp2Impact = qty * (tp2 - entryPrice);
+    
+    // Break-even check
+    const isBreakEven = lastPrice >= tp1;
+    
+    return {
+        atr: atr.toFixed(2),
+        stopLoss: stopLoss.toFixed(2),
+        tp1: tp1.toFixed(2),
+        tp2: tp2.toFixed(2),
+        slImpact: slImpact.toFixed(2),
+        tp1Impact: tp1Impact.toFixed(2),
+        tp2Impact: tp2Impact.toFixed(2),
+        isBreakEven: isBreakEven,
+        inPortfolio: !!portfolioItem,
+        entryPrice: entryPrice.toFixed(2),
+        currentPrice: lastPrice
+    };
+}
+
+// --- Watchlist Logic ---
+function initWatchlist() {
+    const addBtn = document.getElementById('add-watchlist-btn');
+    const addInput = document.getElementById('add-watchlist-input');
+
+    addBtn.addEventListener('click', () => {
+        const ticker = addInput.value.trim().toUpperCase();
+        if (ticker && !currentWatchlist.includes(ticker)) {
+            currentWatchlist.push(ticker);
+            saveWatchlist();
+            addInput.value = '';
+            populateDashboard();
+        }
+    });
+
+    addInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addBtn.click();
+    });
+}
+
+function removeFromWatchlist(ticker, event) {
+    event.stopPropagation();
+    currentWatchlist = currentWatchlist.filter(t => t !== ticker);
+    saveWatchlist();
+    populateDashboard();
+}
+
+async function saveWatchlist() {
+    if (currentUser) {
+        await saveCloudWatchlist(currentUser.uid);
+    } else {
+        localStorage.setItem('myWatchlist', JSON.stringify(currentWatchlist));
+    }
+}
+
 // Dashboard Population
-function populateDashboard() {
-    // Indices
-    const indicesGrid = document.querySelector('.indices-grid');
-    indicesGrid.innerHTML = marketIndices.map(index => `
+async function populateDashboard() {
+    // Indices (Mock for now, as finding reliable free index APIs is hard)
+    const marketIndices = [
+        { name: 'S&P 500', price: '5,087.03', change: '+1.2%', isPositive: true },
+        { name: 'NASDAQ', price: '15,996.82', change: '+1.5%', isPositive: true },
+        { name: 'TWSE', price: '20,466.84', change: '+0.5%', isPositive: true }
+    ];
+    
+    document.querySelector('.indices-grid').innerHTML = marketIndices.map(index => `
         <div class="index-card glass-panel">
-            <div class="index-header">
-                <span>${index.name}</span>
-                <i class="fa-solid fa-arrow-trend-${index.isPositive ? 'up' : 'down'} ${index.isPositive ? 'positive' : 'negative'}"></i>
-            </div>
+            <div class="index-header"><span>${index.name}</span><i class="fa-solid fa-arrow-trend-${index.isPositive ? 'up' : 'down'} ${index.isPositive ? 'positive' : 'negative'}"></i></div>
             <div class="index-price">${index.price}</div>
             <div class="index-change ${index.isPositive ? 'positive' : 'negative'}">${index.change}</div>
         </div>
     `).join('');
 
-    // Trending Stocks
-    const trendingList = document.getElementById('trending-list');
-    trendingList.innerHTML = trendingStocks.map(stock => `
-        <li class="stock-item" onclick="loadStockDetail('${stock.ticker}')">
-            <div class="stock-info">
-                <strong>${stock.ticker}</strong>
-                <span>${stock.name}</span>
-            </div>
-            <div class="stock-price-col">
-                <strong>${stock.price}</strong>
-                <span class="${stock.isPositive ? 'positive' : 'negative'}">${stock.change}</span>
-            </div>
-        </li>
-    `).join('');
+    // Watchlist
+    const listEl = document.getElementById('trending-list');
+    listEl.innerHTML = '<div style="text-align:center; padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>';
+    
+    const apiKey = FINNHUB_API_KEY;
+    let html = '';
+    
+    let displayWatchlist = currentWatchlist;
+    if (currentMarketTab === 'US') {
+        displayWatchlist = currentWatchlist.filter(t => !isTaiwanStock(t));
+    } else if (currentMarketTab === 'TW') {
+        displayWatchlist = currentWatchlist.filter(t => isTaiwanStock(t));
+    }
+
+    if (displayWatchlist.length === 0) {
+        html = '<div style="text-align:center; padding: 20px;">No stocks in this market.</div>';
+    }
+
+    for (let ticker of displayWatchlist) {
+        let price = '...', change = '...', isPositive = true, name = ticker;
+        try {
+            if (isTaiwanStock(ticker)) {
+                const twName = await getTaiwanStockName(ticker);
+                if (twName) name = `${ticker} ${twName}`;
+                
+                // Fetch from FinMind
+                const twTicker = cleanTwTicker(ticker);
+                const today = new Date();
+                const pastMonth = new Date();
+                pastMonth.setDate(today.getDate() - 30);
+                
+                const formatDt = (d) => d.toISOString().split('T')[0];
+                const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(pastMonth)}`);
+                const data = await res.json();
+                
+                if (data.data && data.data.length > 0) {
+                    const latest = data.data[data.data.length - 1];
+                    price = latest.close;
+                    isPositive = latest.spread >= 0;
+                    change = `${isPositive?'+':''}${latest.spread} (${(latest.spread / (latest.close - latest.spread) * 100).toFixed(2)}%)`;
+                }
+            } else {
+                if (apiKey) {
+                    // Fetch from Finnhub
+                    const res = await fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}&token=${apiKey}`);
+                    const data = await res.json();
+                    if (data.c) {
+                        price = data.c;
+                        isPositive = data.d >= 0;
+                        change = `${isPositive?'+':''}${data.d.toFixed(2)} (${data.dp.toFixed(2)}%)`;
+                    }
+                } else {
+                    price = 'No Finnhub Key';
+                    change = 'Set VITE_FINNHUB_API_KEY in .env';
+                }
+            }
+        } catch(e) {
+            price = 'Error'; change = 'Error';
+        }
+
+        const priceStr = typeof price === 'number' ? formatCurrency(price, ticker) : price;
+
+        html += `
+            <li class="stock-item" onclick="loadStockDetail('${ticker}')">
+                <div class="stock-info"><strong>${name}</strong><span>${isTaiwanStock(ticker) ? 'TWSE' : 'US'}</span></div>
+                <div class="stock-price-col"><strong>${priceStr}</strong><span class="${isPositive ? 'positive' : 'negative'}">${change}</span></div>
+                <button class="delete-stock-btn" onclick="removeFromWatchlist('${ticker}', event)"><i class="fa-solid fa-trash"></i></button>
+            </li>
+        `;
+    }
+    
+    listEl.innerHTML = html;
 
     // News
-    const newsList = document.getElementById('news-list');
-    newsList.innerHTML = mockNews.map(news => `
-        <li class="news-item">
-            <h4>${news.title}</h4>
-            <span>${news.source} • ${news.time}</span>
-        </li>
+    const mockNews = [
+        { title: 'Global Markets Rally Amid Rate Cut Hopes', source: 'Financial Times', time: '2 hours ago' },
+        { title: 'TSMC Reports Strong Monthly Revenue', source: 'Bloomberg', time: '3 hours ago' }
+    ];
+    document.getElementById('news-list').innerHTML = mockNews.map(news => `
+        <li class="news-item"><h4>${news.title}</h4><span>${news.source} • ${news.time}</span></li>
     `).join('');
 }
 
@@ -125,92 +706,530 @@ function setupSearch() {
     });
 }
 
-function loadStockDetail(ticker) {
-    // In a real app, fetch data here. Using mock logic.
-    let stock = trendingStocks.find(s => s.ticker === ticker);
-    
-    // Fallback mock if not in trending
-    if (!stock) {
-        stock = { ticker: ticker, name: `${ticker} Corporation`, price: '$' + (Math.random() * 500).toFixed(2), change: '+' + (Math.random() * 5).toFixed(2) + '%', isPositive: true };
+async function fetchTwseCandles(ticker, tf) {
+    if (tf === '15min' || tf === '1h') {
+        showToast("FinMind 免費版僅支援日線以上週期 (Day/Week/Month/Year)");
+        tf = '1day'; // Fallback
     }
 
-    document.getElementById('detail-ticker').textContent = stock.ticker;
-    document.getElementById('detail-name').textContent = stock.name;
-    document.getElementById('detail-price').textContent = stock.price;
-    const changeEl = document.getElementById('detail-change');
-    changeEl.textContent = stock.change;
-    changeEl.className = stock.isPositive ? 'positive' : 'negative';
-
-    // Update Stats
-    document.getElementById('stats-grid').innerHTML = `
-        <div class="stat-item"><span class="stat-label">Market Cap</span><span class="stat-value">$3.0T</span></div>
-        <div class="stat-item"><span class="stat-label">P/E Ratio</span><span class="stat-value">28.5</span></div>
-        <div class="stat-item"><span class="stat-label">Div Yield</span><span class="stat-value">0.5%</span></div>
-        <div class="stat-item"><span class="stat-label">52W High</span><span class="stat-value">$199.62</span></div>
-    `;
-
-    document.getElementById('ai-quick-summary').innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Analyzing ${stock.ticker}...`;
+    const twTicker = cleanTwTicker(ticker);
+    const end = new Date();
+    const start = new Date();
+    start.setFullYear(end.getFullYear() - 10); // 10 years of data
     
-    setTimeout(() => {
-        document.getElementById('ai-quick-summary').innerHTML = `${stock.ticker} is showing strong momentum. The P/E ratio suggests a premium valuation, but recent earnings beat expectations. Key resistance level is at $195.`;
-    }, 1500);
+    const formatDt = (d) => d.toISOString().split('T')[0];
+    const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`);
+    const data = await res.json();
+    
+    if(!data.data || data.data.length === 0) throw new Error("No data");
+    
+    const latest = data.data[data.data.length - 1];
+    const quote = {
+        c: latest.close,
+        d: latest.spread,
+        dp: (latest.spread / (latest.close - latest.spread)) * 100,
+        h: latest.max,
+        l: latest.min,
+        pc: latest.close - latest.spread
+    };
+    
+    let candles = data.data.map(d => ({
+        time: Math.floor(new Date(d.date).getTime() / 1000),
+        open: d.open,
+        high: d.max,
+        low: d.min,
+        close: d.close,
+        volume: d.trading_volume || 0
+    }));
 
-    renderChart(stock.ticker);
-    switchView('stock-detail-view');
+    if (tf !== '1day') {
+        candles = aggregateCandles(candles, tf);
+    }
+    
+    return { quote, candles, profile: { name: `TWSE: ${twTicker}` } };
 }
 
-function renderChart(ticker) {
-    const ctx = document.getElementById('stockChart').getContext('2d');
-    
-    if (currentStockChart) {
-        currentStockChart.destroy();
-    }
+async function fetchUSCandles(ticker, finnhubKey, tf) {
+    // 1. Fetch real-time quote and profile from Finnhub
+    const [quoteRes, profileRes] = await Promise.all([
+        fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}&token=${finnhubKey}`),
+        fetch(`${FINNHUB_BASE}/stock/profile2?symbol=${ticker}&token=${finnhubKey}`)
+    ]);
 
-    // Generate random chart data
-    const labels = Array.from({length: 30}, (_, i) => `Day ${i+1}`);
-    let basePrice = 150;
-    const data = labels.map(() => {
-        basePrice += (Math.random() - 0.45) * 5;
-        return basePrice;
+    const quote = await quoteRes.json();
+    const profile = await profileRes.json();
+
+    if (quote.c == 0 && quote.d == null) throw new Error("Invalid ticker");
+
+    // 2. Fetch historical candles from Twelve Data
+    let candles = [];
+    if (TWELVEDATA_API_KEY) {
+        try {
+            // Twelve data doesn't have 1year, so we use 1month and aggregate for 1year
+            const apiTf = tf === '1year' ? '1month' : tf;
+            const outputSize = (tf === '15min' || tf === '1h') ? 500 : 2520;
+            
+            const candleRes = await fetch(`${TWELVEDATA_BASE}/time_series?symbol=${ticker}&interval=${apiTf}&outputsize=${outputSize}&apikey=${TWELVEDATA_API_KEY}`);
+            const cData = await candleRes.json();
+            
+            if (cData.status === "ok") {
+                candles = cData.values.map(v => {
+                    const timestamp = Math.floor(new Date(v.datetime).getTime() / 1000);
+                    return {
+                        time: timestamp,
+                        open: parseFloat(v.open),
+                        high: parseFloat(v.high),
+                        low: parseFloat(v.low),
+                        close: parseFloat(v.close),
+                        volume: parseInt(v.volume) || 0
+                    };
+                }).reverse();
+
+                // If yearly was requested, aggregate from monthly
+                if (tf === '1year') {
+                    candles = aggregateCandles(candles, '1year');
+                }
+            }
+        } catch (e) {
+            console.warn("Twelve Data fetch failed:", e);
+        }
+    }
+    
+    return { quote, candles, profile };
+}
+
+function showToast(msg) {
+    let toast = document.getElementById('app-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'app-toast';
+        toast.style.cssText = `
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: #3B82F6; color: white; padding: 12px 24px; border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 9999; font-weight: 600;
+            opacity: 0; transition: opacity 0.3s, bottom 0.3s;
+        `;
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    toast.style.bottom = '40px';
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.bottom = '30px';
+    }, 3500);
+}
+
+async function loadStockDetail(ticker) {
+    currentTicker = ticker; // Save for TF switching
+    switchView('stock-detail-view');
+    document.getElementById('detail-ticker').textContent = ticker;
+    document.getElementById('detail-name').textContent = 'Loading...';
+    document.getElementById('detail-price').textContent = '...';
+    document.getElementById('detail-change').textContent = '';
+    document.getElementById('ai-quick-summary').innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Fetching dual-engine data...`;
+    
+    // Reset to Day view on new search
+    currentTimeframe = '1day';
+    document.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-tf') === '1day'));
+
+    await loadChartData(ticker, '1day');
+}
+
+async function loadChartData(ticker, tf) {
+    currentChartData = []; // Reset
+    const summaryEl = document.getElementById('ai-quick-summary');
+    
+    try {
+        let data;
+        if (isTaiwanStock(ticker)) {
+            data = await fetchTwseCandles(ticker, tf);
+        } else if (FINNHUB_API_KEY) {
+            data = await fetchUSCandles(ticker, FINNHUB_API_KEY, tf);
+        } else {
+            throw new Error('VITE_FINNHUB_API_KEY not set in .env file');
+        }
+
+        const { quote, candles, profile } = data;
+        currentChartData = candles;
+
+        document.getElementById('detail-name').textContent = profile.name || ticker;
+        document.getElementById('detail-price').textContent = `$${quote.c.toFixed(2)}`;
+        
+        const isPositive = quote.d >= 0;
+        const changeText = `${isPositive ? '+' : ''}${quote.d.toFixed(2)} (${quote.dp.toFixed(2)}%)`;
+        const changeEl = document.getElementById('detail-change');
+        changeEl.textContent = changeText;
+        changeEl.className = isPositive ? 'positive' : 'negative';
+
+        document.getElementById('stats-grid').innerHTML = `
+            <div class="stat-item"><span class="stat-label">Market Cap</span><span class="stat-value">${profile.marketCapitalization ? '$'+(profile.marketCapitalization/1000).toFixed(2)+'B' : 'N/A'}</span></div>
+            <div class="stat-item"><span class="stat-label">High (Day)</span><span class="stat-value">$${quote.h.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Low (Day)</span><span class="stat-value">$${quote.l.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Prev Close</span><span class="stat-value">$${quote.pc.toFixed(2)}</span></div>
+        `;
+
+        document.getElementById('ai-quick-summary').innerHTML = `${ticker} is currently trading at $${quote.c.toFixed(2)}, which is a ${quote.dp.toFixed(2)}% change from the previous close.`;
+        
+        renderTradingViewChart(candles);
+        
+        // Show AI Signal Card
+        const signals = calculateAISignals(ticker, candles);
+        const signalCard = document.getElementById('ai-signal-card');
+        if (signals) {
+            signalCard.style.display = 'block';
+            signalCard.innerHTML = `
+                <div class="glass-panel" style="padding: 16px; margin-top: 20px;">
+                    <h3 style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-robot" style="color: var(--accent-primary);"></i> AI Trade Signals 
+                        ${signals.inPortfolio ? '<span class="ticker-badge" style="background: rgba(16,185,129,0.2); color: #10B981; font-size: 10px;">IN PORTFOLIO</span>' : ''}
+                    </h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px;">
+                            <div class="stat-item">
+                                <span class="stat-label">Stop Loss (2*ATR)</span>
+                                <span class="stat-value negative">$${signals.stopLoss}</span>
+                                <span style="font-size: 10px; opacity: 0.8;">Est. Loss: $${signals.slImpact}</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Target 1 (1:2)</span>
+                                <span class="stat-value positive">$${signals.tp1}</span>
+                                <span style="font-size: 10px; opacity: 0.8;">Est. Gain: $${signals.tp1Impact}</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Target 2 (1:3)</span>
+                                <span class="stat-value positive">$${signals.tp2}</span>
+                                <span style="font-size: 10px; opacity: 0.8;">Est. Gain: $${signals.tp2Impact}</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">ATR (14)</span>
+                                <span class="stat-value" style="font-size: 0.9em;">$${signals.atr}</span>
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px; font-size: 13px; color: var(--text-secondary); line-height: 1.5; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                            <i class="fa-solid fa-lightbulb" style="color: #F59E0B; margin-right: 5px;"></i>
+                            ${signals.isBreakEven ? 
+                                '<span class="positive" style="font-weight: bold;">[PROTECT] TP1 reached. Suggest moving Stop-Loss to Break-even ($' + signals.entryPrice + ').</span>' : 
+                                `Current strategy: Hold for TP1. Protected SL at $${signals.stopLoss}.`}
+                        </div>
+                </div>
+            `;
+        } else {
+            signalCard.style.display = 'none';
+        }
+        
+    } catch (err) {
+        document.getElementById('detail-name').textContent = "Error fetching data";
+        document.getElementById('ai-quick-summary').innerHTML = `Failed to fetch data for ${ticker}. ${err.message}`;
+        console.error(err);
+        if(currentStockChart) { currentStockChart.remove(); currentStockChart = null; }
+    }
+}
+
+// --- Indicator State ---
+let volumeSeries = null;
+let bollingerSeries = { upper: null, mid: null, lower: null };
+let rsiChart = null;
+let rsiSeries = null;
+
+// --- Charting ---
+function renderTradingViewChart(data) {
+    // Destroy old RSI chart
+    if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
+    document.getElementById('rsiChart').style.display = 'none';
+
+    const chartContainer = document.getElementById('stockChart');
+    chartContainer.innerHTML = '';
+    if (!data || data.length === 0) return;
+
+    currentStockChart = createChart(chartContainer, {
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF' },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+        crosshair: { mode: CrosshairMode.Normal },
+        rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
+        timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
     });
 
-    currentStockChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: `${ticker} Price`,
-                data: data,
-                borderColor: '#3B82F6',
-                backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                borderWidth: 2,
-                fill: true,
-                tension: 0.4,
-                pointRadius: 0,
-                pointHitRadius: 10
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false }
-            },
-            scales: {
-                y: {
-                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#9CA3AF' }
-                },
-                x: {
-                    grid: { display: false },
-                    ticks: { display: false }
-                }
-            },
-            interaction: {
-                intersect: false,
-                mode: 'index',
-            },
+    candlestickSeries = currentStockChart.addSeries(CandlestickSeries, {
+        upColor: '#10B981', downColor: '#EF4444',
+        borderVisible: false, wickUpColor: '#10B981', wickDownColor: '#EF4444',
+    });
+    candlestickSeries.setData(data);
+    
+    // Scale Optimization: Show exactly 60 candles by default regardless of timeframe
+    if (data.length > 60) {
+        currentStockChart.timeScale().setVisibleLogicalRange({
+            from: data.length - 60,
+            to: data.length - 1
+        });
+    } else {
+        currentStockChart.timeScale().fitContent();
+    }
+
+    smaSeriesList = [];
+    volumeSeries = null;
+    bollingerSeries = { upper: null, mid: null, lower: null };
+    document.querySelectorAll('.indicator-btn').forEach(btn => btn.classList.remove('active'));
+}
+
+// --- Calculations ---
+function calcSMA(data, period) {
+    const result = [];
+    for (let i = period - 1; i < data.length; i++) {
+        const sum = data.slice(i - period + 1, i + 1).reduce((s, d) => s + d.close, 0);
+        result.push({ time: data[i].time, value: sum / period });
+    }
+    return result;
+}
+
+function calcEMA(data, period) {
+    const result = [];
+    const k = 2 / (period + 1);
+    let ema = data.slice(0, period).reduce((s, d) => s + d.close, 0) / period;
+    result.push({ time: data[period - 1].time, value: ema });
+    for (let i = period; i < data.length; i++) {
+        ema = data[i].close * k + ema * (1 - k);
+        result.push({ time: data[i].time, value: ema });
+    }
+    return result;
+}
+
+function calcBollinger(data, period = 20, mult = 2) {
+    const upper = [], mid = [], lower = [];
+    for (let i = period - 1; i < data.length; i++) {
+        const slice = data.slice(i - period + 1, i + 1);
+        const avg = slice.reduce((s, d) => s + d.close, 0) / period;
+        const std = Math.sqrt(slice.reduce((s, d) => s + (d.close - avg) ** 2, 0) / period);
+        upper.push({ time: data[i].time, value: avg + mult * std });
+        mid.push({ time: data[i].time, value: avg });
+        lower.push({ time: data[i].time, value: avg - mult * std });
+    }
+    return { upper, mid, lower };
+}
+
+function calcRSI(data, period = 14) {
+    const result = [];
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+        const diff = data[i].close - data[i - 1].close;
+        if (diff > 0) gains += diff; else losses -= diff;
+    }
+    let avgGain = gains / period, avgLoss = losses / period;
+    const rs = avgGain / (avgLoss || 0.0001);
+    result.push({ time: data[period].time, value: 100 - 100 / (1 + rs) });
+    for (let i = period + 1; i < data.length; i++) {
+        const diff = data[i].close - data[i - 1].close;
+        avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
+        avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
+        const rsi = 100 - 100 / (1 + avgGain / (avgLoss || 0.0001));
+        result.push({ time: data[i].time, value: rsi });
+    }
+    return result;
+}
+
+// --- Indicator Renderers ---
+function addSMA(period) {
+    if (!currentStockChart || currentChartData.length === 0) return;
+    const colors = { 5: '#3B82F6', 20: '#F59E0B', 60: '#8B5CF6', 120: '#EC4899' };
+    const line = currentStockChart.addSeries(LineSeries, {
+        color: colors[period] || '#6B7280', lineWidth: 2, title: `SMA${period}`,
+    });
+    line.setData(calcSMA(currentChartData, period));
+    smaSeriesList.push(line);
+}
+
+function addEMA(period) {
+    if (!currentStockChart || currentChartData.length < period) return;
+    const colors = { 12: '#06B6D4', 26: '#F97316' };
+    const line = currentStockChart.addSeries(LineSeries, {
+        color: colors[period] || '#A3E635', lineWidth: 2, lineStyle: 1, title: `EMA${period}`,
+    });
+    line.setData(calcEMA(currentChartData, period));
+    smaSeriesList.push(line);
+}
+
+function addBollinger(period) {
+    if (!currentStockChart || currentChartData.length < period) return;
+    // Remove old Bollinger if any
+    if (bollingerSeries.upper) {
+        ['upper','mid','lower'].forEach(k => { currentStockChart.removeSeries(bollingerSeries[k]); bollingerSeries[k] = null; });
+    }
+    const { upper, mid, lower } = calcBollinger(currentChartData, period);
+    bollingerSeries.upper = currentStockChart.addSeries(LineSeries, { color: '#60A5FA', lineWidth: 1, title: 'BB Upper' });
+    bollingerSeries.mid   = currentStockChart.addSeries(LineSeries, { color: '#9CA3AF', lineWidth: 1, lineStyle: 2, title: 'BB Mid' });
+    bollingerSeries.lower = currentStockChart.addSeries(LineSeries, { color: '#F87171', lineWidth: 1, title: 'BB Lower' });
+    bollingerSeries.upper.setData(upper);
+    bollingerSeries.mid.setData(mid);
+    bollingerSeries.lower.setData(lower);
+}
+
+function removeBollinger() {
+    if (!currentStockChart || !bollingerSeries.upper) return;
+    ['upper','mid','lower'].forEach(k => { currentStockChart.removeSeries(bollingerSeries[k]); bollingerSeries[k] = null; });
+}
+
+function toggleVolume(active) {
+    if (!currentStockChart || currentChartData.length === 0) return;
+    if (!active) {
+        if (volumeSeries) { currentStockChart.removeSeries(volumeSeries); volumeSeries = null; }
+        return;
+    }
+    volumeSeries = currentStockChart.addSeries(HistogramSeries, {
+        color: '#26a69a', priceFormat: { type: 'volume' },
+        priceScaleId: 'vol',
+    });
+    currentStockChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    volumeSeries.setData(currentChartData.map(d => ({
+        time: d.time,
+        value: d.volume || 0,
+        color: d.close >= d.open ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)'
+    })));
+}
+
+function toggleRSI(active, period = 14) {
+    const rsiContainer = document.getElementById('rsiChart');
+    if (!active) {
+        if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
+        rsiContainer.style.display = 'none';
+        return;
+    }
+    if (currentChartData.length < period + 1) return;
+    rsiContainer.style.display = 'block';
+    rsiChart = createChart(rsiContainer, {
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF', fontSize: 10 },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+        rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', scaleMargins: { top: 0.1, bottom: 0.1 } },
+        timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, visible: false },
+        crosshair: { mode: CrosshairMode.Normal },
+    });
+    rsiSeries = rsiChart.addSeries(LineSeries, { color: '#A78BFA', lineWidth: 2, title: 'RSI 14' });
+    rsiSeries.setData(calcRSI(currentChartData, period));
+    // Sync time scales
+    currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range && rsiChart) rsiChart.timeScale().setVisibleLogicalRange(range);
+    });
+    rsiChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (range && currentStockChart) currentStockChart.timeScale().setVisibleLogicalRange(range);
+    });
+    rsiChart.timeScale().fitContent();
+}
+
+// --- Indicator Init & Toggle Logic ---
+function clearIndicators() {
+    if (!currentStockChart) return;
+    smaSeriesList.forEach(s => currentStockChart.removeSeries(s));
+    smaSeriesList = [];
+    removeBollinger();
+    toggleVolume(false);
+    toggleRSI(false);
+    document.querySelectorAll('.indicator-btn').forEach(btn => btn.classList.remove('active'));
+}
+
+// --- Timeframe Aggregation Helper ---
+function aggregateCandles(dailyData, tf) {
+    if (tf === '1day') return dailyData;
+    
+    const result = [];
+    const groups = {};
+
+    dailyData.forEach(d => {
+        const date = new Date(d.time * 1000);
+        let key;
+        if (tf === '1week') {
+            // Group by Year and ISO Week
+            const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+            const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
+            const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+            key = `${date.getFullYear()}-W${weekNum}`;
+        } else if (tf === '1month') {
+            key = `${date.getFullYear()}-${date.getMonth() + 1}`;
+        } else if (tf === '1year') {
+            key = `${date.getFullYear()}`;
         }
+        
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(d);
+    });
+
+    for (const key in groups) {
+        const group = groups[key];
+        result.push({
+            time: group[0].time, // Use the start of the period
+            open: group[0].open,
+            high: Math.max(...group.map(g => g.high)),
+            low: Math.min(...group.map(g => g.low)),
+            close: group[group.length - 1].close,
+            volume: group.reduce((sum, g) => sum + (g.volume || 0), 0)
+        });
+    }
+    return result;
+}
+
+function initIndicators() {
+    document.getElementById('clear-indicators-btn').addEventListener('click', clearIndicators);
+
+    document.querySelectorAll('.indicator-btn:not(.danger)').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const b = e.currentTarget;
+            const type = b.getAttribute('data-type');
+            const period = parseInt(b.getAttribute('data-period'));
+            const isActive = b.classList.contains('active');
+            b.classList.toggle('active');
+
+            if (type === 'sma') {
+                if (isActive) { redrawActiveIndicators(); } else { addSMA(period); }
+            } else if (type === 'ema') {
+                if (isActive) { redrawActiveIndicators(); } else { addEMA(period); }
+            } else if (type === 'boll') {
+                if (isActive) removeBollinger(); else addBollinger(period);
+            } else if (type === 'vol') {
+                toggleVolume(!isActive);
+            } else if (type === 'rsi') {
+                toggleRSI(!isActive, period);
+            }
+        });
+    });
+}
+
+function initTimeframeSwitcher() {
+    const tfBtns = document.querySelectorAll('.tf-btn');
+    tfBtns.forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const b = e.currentTarget;
+            const tf = b.getAttribute('data-tf');
+            if (tf === currentTimeframe) return;
+
+            // Update UI
+            tfBtns.forEach(el => el.classList.remove('active'));
+            b.classList.add('active');
+            currentTimeframe = tf;
+
+            // Reload data
+            if (currentTicker) {
+                await loadChartData(currentTicker, tf);
+                // Preserve active indicators
+                redrawActiveIndicators();
+            }
+        });
+    });
+}
+
+function redrawActiveIndicators() {
+    if (!currentStockChart) return;
+    
+    // Clear MA list
+    smaSeriesList.forEach(s => currentStockChart.removeSeries(s));
+    smaSeriesList = [];
+    
+    // Redraw based on active buttons
+    document.querySelectorAll('.indicator-btn.active').forEach(b => {
+        const type = b.getAttribute('data-type');
+        const period = parseInt(b.getAttribute('data-period'));
+        
+        if (type === 'sma') addSMA(period);
+        else if (type === 'ema') addEMA(period);
+        else if (type === 'boll') addBollinger(period);
+        else if (type === 'vol') toggleVolume(true);
+        else if (type === 'rsi') toggleRSI(true, period);
     });
 }
 
@@ -233,9 +1252,7 @@ function handleUserMessage() {
     // Add user message
     const messagesContainer = document.getElementById('chat-messages');
     messagesContainer.insertAdjacentHTML('beforeend', `
-        <div class="message user-message">
-            <div class="message-content">${text}</div>
-        </div>
+        <div class="message user-message"><div class="message-content">${text}</div></div>
     `);
     
     input.value = '';
@@ -246,39 +1263,88 @@ function handleUserMessage() {
     messagesContainer.insertAdjacentHTML('beforeend', `
         <div class="message ai-message" id="${typingId}">
             <div class="message-avatar"><i class="fa-solid fa-robot"></i></div>
-            <div class="message-content">
-                <div class="typing-indicator">
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
-                </div>
-            </div>
+            <div class="message-content"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>
         </div>
     `);
     scrollToBottom();
 
-    // Mock AI response
-    setTimeout(() => {
-        document.getElementById(typingId).remove();
+    // AI Command Parser or Gemini API Call
+    setTimeout(async () => {
         
-        let response = "Based on my analysis, that's an interesting perspective. Market conditions are volatile, so I recommend maintaining a diversified portfolio.";
-        if (text.toLowerCase().includes('apple') || text.toLowerCase().includes('aapl')) {
-            response = "Apple (AAPL) recently reported strong services revenue, offsetting slight dips in hardware sales. The upcoming product announcements might serve as a positive catalyst. Are you considering a long position?";
-        } else if (text.toLowerCase().includes('risk')) {
-            response = "Current market risks include sticky inflation metrics and potential delayed rate cuts by the Fed. It's advisable to monitor macroeconomic indicators closely over the next two weeks.";
+        const lowerText = text.toLowerCase();
+        
+        // Command Hook: Draw MA
+        if (lowerText.includes('draw') && lowerText.includes('ma')) {
+            document.getElementById(typingId).remove();
+            const match = lowerText.match(/\d+/);
+            let response;
+            if (match) {
+                const period = parseInt(match[0]);
+                addSMA(period);
+                response = `I've drawn the ${period}-day Moving Average on your chart. As you can see, this helps smooth out price action to identify the underlying trend.`;
+            } else {
+                addSMA(20);
+                response = `I've drawn the 20-day Moving Average on your chart as a standard indicator.`;
+            }
+            switchView('stock-detail-view');
+            addAiMessage(response);
+            return;
         }
 
-        addAiMessage(response);
-    }, 1500);
+        // Gemini AI is temporarily disabled. Replace 'if (false)' with 'if (GEMINI_API_KEY)' to re-enable.
+        if (false) {
+            // ... Gemini call placeholder ...
+        } else {
+            // Mock / Disabled Response
+            document.getElementById(typingId).remove();
+            let response = '🚧 AI analysis is temporarily disabled while we finalize the chart features. Come back soon!';
+            addAiMessage(response);
+        }
+
+    }, 500);
+}
+
+async function callGeminiAPI(prompt, apiKey) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
+    const payload = {
+        contents: [{
+            parts: [{ text: prompt }]
+        }]
+    };
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey.trim()
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Gemini API Error:", errorText);
+        throw new Error(`API Error ${res.status} (Please check console for details)`);
+    }
+
+    const data = await res.json();
+    if (data.candidates && data.candidates.length > 0) {
+        return data.candidates[0].content.parts[0].text;
+    }
+    return "No response generated.";
+}
+
+function formatMarkdown(text) {
+    // Very basic markdown formatting for the chat
+    return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+               .replace(/\*(.*?)\*/g, '<em>$1</em>')
+               .replace(/\n/g, '<br>');
 }
 
 function addAiMessage(text) {
     const messagesContainer = document.getElementById('chat-messages');
     messagesContainer.insertAdjacentHTML('beforeend', `
-        <div class="message ai-message">
-            <div class="message-avatar"><i class="fa-solid fa-robot"></i></div>
-            <div class="message-content">${text}</div>
-        </div>
+        <div class="message ai-message"><div class="message-avatar"><i class="fa-solid fa-robot"></i></div><div class="message-content">${text}</div></div>
     `);
     scrollToBottom();
 }
