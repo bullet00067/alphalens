@@ -407,6 +407,7 @@ async function renderPortfolio() {
             <td>${formatCurrency(item.cost, item.ticker)}</td>
             <td>${item.qty}</td>
             <td class="${pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(pl, item.ticker)} (${plPercent.toFixed(2)}%)</td>
+            <td id="port-sig-${index}"><i class="fa-solid fa-spinner fa-spin" style="color: var(--text-secondary);"></i></td>
             <td><button class="indicator-btn danger" style="padding: 4px 8px;" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
         `;
         row.style.cursor = 'pointer';
@@ -415,6 +416,9 @@ async function renderPortfolio() {
             loadStockDetail(item.ticker);
         };
         tableBody.appendChild(row);
+        
+        // Asynchronously evaluate PIP signal
+        evaluatePortfolioSignal(item.ticker, index);
     }
 
     if (summaryContainer) {
@@ -540,6 +544,82 @@ async function removeFromPortfolio(index, event) {
 
 
 // --- AI Trading Signals Engine ---
+function findPIPs(candles, numPIPs = 7) {
+    if (candles.length <= numPIPs) {
+        return candles.map(c => ({ time: c.time, value: c.close }));
+    }
+    
+    // Map candles to include index for interpolation
+    let data = candles.map((c, i) => ({ index: i, time: c.time, value: c.close }));
+    let pips = [data[0], data[data.length - 1]];
+    
+    while (pips.length < numPIPs) {
+        pips.sort((a, b) => a.index - b.index);
+        let maxDist = -1;
+        let bestPoint = null;
+        
+        for (let i = 0; i < pips.length - 1; i++) {
+            let p1 = pips[i];
+            let p2 = pips[i + 1];
+            
+            for (let j = p1.index + 1; j < p2.index; j++) {
+                let p3 = data[j];
+                // Line equation: y = y1 + (y2-y1)*(x-x1)/(x2-x1)
+                let y_line = p1.value + (p2.value - p1.value) * (p3.index - p1.index) / (p2.index - p1.index);
+                let dist = Math.abs(p3.value - y_line);
+                
+                if (dist > maxDist) {
+                    maxDist = dist;
+                    bestPoint = p3;
+                }
+            }
+        }
+        
+        if (bestPoint) {
+            pips.push(bestPoint);
+        } else {
+            break;
+        }
+    }
+    
+    pips.sort((a, b) => a.index - b.index);
+    return pips.map(p => ({ time: p.time, value: p.value }));
+}
+
+function generatePIPSignal(pips) {
+    if (pips.length < 3) return { signal: 'NEUTRAL', text: '🟡 觀望', color: 'var(--text-secondary)' };
+    
+    const last = pips[pips.length - 1]; // current price
+    const prev = pips[pips.length - 2]; // last turning point
+    
+    // Calculate trend from last turning point
+    const trend = (last.value - prev.value) / prev.value;
+    
+    if (trend > 0.015) return { signal: 'BUY', text: '🟢 買進', color: '#22c55e' };
+    if (trend < -0.015) return { signal: 'SELL', text: '🔴 賣出', color: '#ef4444' };
+    
+    return { signal: 'NEUTRAL', text: '🟡 觀望', color: '#eab308' };
+}
+
+async function evaluatePortfolioSignal(ticker, index) {
+    try {
+        const history = await fetchStockHistoryCached(ticker, '1day');
+        const sigTd = document.getElementById(`port-sig-${index}`);
+        if (!sigTd) return;
+        
+        if (history && history.candles && history.candles.length > 7) {
+            const pips = findPIPs(history.candles, 7);
+            const signal = generatePIPSignal(pips);
+            sigTd.innerHTML = `<span style="color: ${signal.color}; font-weight: bold; font-size: 0.9em;">${signal.text}</span>`;
+        } else {
+            sigTd.innerHTML = `<span style="color: var(--text-secondary); font-size: 0.9em;">N/A</span>`;
+        }
+    } catch (e) {
+        const sigTd = document.getElementById(`port-sig-${index}`);
+        if (sigTd) sigTd.innerHTML = `<span style="color: var(--text-secondary); font-size: 0.9em;">Err</span>`;
+    }
+}
+
 function calcATR(candles, period = 14) {
     if (candles.length < period + 1) return 0;
     
@@ -836,6 +916,35 @@ async function fetchUSCandles(ticker, finnhubKey, tf) {
     return { quote, candles, profile };
 }
 
+async function fetchStockHistoryCached(ticker, resolution = '1day') {
+    const cacheKey = `history_cache_${ticker}_${resolution}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+        try {
+            const parsed = JSON.parse(cached);
+            // TTL = 1 hour (3600000 ms)
+            if (Date.now() - parsed.timestamp < 3600000) {
+                return parsed.data;
+            }
+        } catch(e) {}
+    }
+    
+    let result = null;
+    if (isTaiwanStock(ticker)) {
+        result = await fetchTwseCandles(ticker, resolution);
+    } else {
+        result = await fetchUSCandles(ticker, FINNHUB_API_KEY, resolution);
+    }
+    
+    if (result && result.candles && result.candles.length > 0) {
+        localStorage.setItem(cacheKey, JSON.stringify({
+            timestamp: Date.now(),
+            data: result
+        }));
+    }
+    return result;
+}
+
 function showToast(msg) {
     let toast = document.getElementById('app-toast');
     if (!toast) {
@@ -968,6 +1077,7 @@ let volumeSeries = null;
 let bollingerSeries = { upper: null, mid: null, lower: null };
 let rsiChart = null;
 let rsiSeries = null;
+let pipSeries = null;
 
 // --- Charting ---
 function renderTradingViewChart(data) {
@@ -992,6 +1102,20 @@ function renderTradingViewChart(data) {
         borderVisible: false, wickUpColor: '#10B981', wickDownColor: '#EF4444',
     });
     candlestickSeries.setData(data);
+    
+    // Add PIP Series Overlay
+    pipSeries = currentStockChart.addSeries(LineSeries, {
+        color: 'rgba(234, 179, 8, 0.8)', // Yellowish
+        lineWidth: 2,
+        lineStyle: 3, // Dotted
+        crosshairMarkerVisible: true
+    });
+    
+    if (data.length > 7) {
+        const pips = findPIPs(data, 7);
+        pipSeries.setData(pips);
+    }
+
     
     // Scale Optimization: Show exactly 60 candles by default regardless of timeframe
     if (data.length > 60) {
