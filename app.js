@@ -1,7 +1,7 @@
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, updateDoc } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAz5NDBefbtYQG9k7SHuaSwbGuGv54S-fM",
@@ -237,6 +237,16 @@ async function addCloudPortfolio(uid, ticker, cost, qty) {
     }
 }
 
+async function updateCloudPortfolio(uid, docId, cost, qty) {
+    try {
+        const docRef = doc(db, `users/${uid}/portfolio`, docId);
+        await updateDoc(docRef, { cost, qty });
+    } catch (error) {
+        console.error("Update DB Error:", error);
+        showToast("Failed to update holding");
+    }
+}
+
 async function removeCloudPortfolio(uid, index) {
     const item = currentPortfolio[index];
     if (!item || !item.docId) return;
@@ -395,8 +405,9 @@ async function renderPortfolio() {
             <td><span class="ticker-badge">${displayName}</span></td>
             <td>${currentPrice ? formatCurrency(currentPrice, item.ticker) : '...'}</td>
             <td>${formatCurrency(item.cost, item.ticker)}</td>
+            <td>${item.qty}</td>
             <td class="${pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(pl, item.ticker)} (${plPercent.toFixed(2)}%)</td>
-            <td><button class="indicator-btn danger" style="padding: 4px 8px;" onclick="removeFromPortfolio(${index})"><i class="fa-solid fa-trash"></i></button></td>
+            <td><button class="indicator-btn danger" style="padding: 4px 8px;" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
         `;
         row.style.cursor = 'pointer';
         row.onclick = (e) => {
@@ -444,7 +455,7 @@ async function renderPortfolio() {
     }
 }
 
-async function addToPortfolioFromForm() {
+async function addToPortfolioFromForm(event) {
     const ticker = document.getElementById('port-ticker').value.toUpperCase().trim();
     const cost = parseFloat(document.getElementById('port-cost').value);
     const qty = parseInt(document.getElementById('port-qty').value);
@@ -454,23 +465,48 @@ async function addToPortfolioFromForm() {
         return;
     }
 
-    const btn = event.target.closest('button');
-    const originalHtml = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
-    btn.disabled = true;
-
-    if (currentUser) {
-        await addCloudPortfolio(currentUser.uid, ticker, cost, qty);
-    } else {
-        const data = { ticker, cost, qty, date: new Date().toISOString() };
-        currentPortfolio.push(data);
-        localStorage.setItem('myPortfolio', JSON.stringify(currentPortfolio));
-        fetchPortfolioQuotes();
-        showToast(`Added ${ticker} to local portfolio`);
+    const btn = event ? event.target.closest('button') : null;
+    let originalHtml = '';
+    if (btn) {
+        originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        btn.disabled = true;
     }
     
-    btn.innerHTML = originalHtml;
-    btn.disabled = false;
+    const existingIndex = currentPortfolio.findIndex(p => p.ticker === ticker);
+
+    if (currentUser) {
+        if (existingIndex !== -1) {
+            const docId = currentPortfolio[existingIndex].docId;
+            await updateCloudPortfolio(currentUser.uid, docId, cost, qty);
+            currentPortfolio[existingIndex].cost = cost;
+            currentPortfolio[existingIndex].qty = qty;
+            renderPortfolio();
+            fetchPortfolioQuotes();
+            showToast(`Updated ${ticker} in cloud portfolio`);
+        } else {
+            await addCloudPortfolio(currentUser.uid, ticker, cost, qty);
+            showToast(`Added ${ticker} to cloud portfolio`);
+        }
+    } else {
+        if (existingIndex !== -1) {
+            currentPortfolio[existingIndex].cost = cost;
+            currentPortfolio[existingIndex].qty = qty;
+            showToast(`Updated ${ticker} in local portfolio`);
+        } else {
+            const data = { ticker, cost, qty, date: new Date().toISOString() };
+            currentPortfolio.push(data);
+            showToast(`Added ${ticker} to local portfolio`);
+        }
+        localStorage.setItem('myPortfolio', JSON.stringify(currentPortfolio));
+        renderPortfolio();
+        fetchPortfolioQuotes();
+    }
+    
+    if (btn) {
+        btn.innerHTML = originalHtml;
+        btn.disabled = false;
+    }
     
     // Sync to Watchlist if not exists
     if (!currentWatchlist.includes(ticker)) {
@@ -483,10 +519,12 @@ async function addToPortfolioFromForm() {
     document.getElementById('port-ticker').value = '';
     document.getElementById('port-cost').value = '';
     document.getElementById('port-qty').value = '';
-    showToast(`Added ${ticker} to portfolio`);
 }
 
-async function removeFromPortfolio(index) {
+async function removeFromPortfolio(index, event) {
+    if (event) {
+        event.stopPropagation();
+    }
     if (confirm('Are you sure you want to remove this holding?')) {
         if (currentUser) {
             await removeCloudPortfolio(currentUser.uid, index);

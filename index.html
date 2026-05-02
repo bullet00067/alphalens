@@ -131,8 +131,8 @@
                                     <input type="number" id="port-qty" placeholder="Quantity..." style="width: 100%;">
                                 </div>
                             </div>
-                            <button class="indicator-btn" style="width: 100%; justify-content: center; background: var(--accent-primary); color: white;" onclick="addToPortfolioFromForm()">
-                                <i class="fa-solid fa-plus"></i> Add to Portfolio
+                            <button class="indicator-btn" style="width: 100%; justify-content: center; background: var(--accent-primary); color: white;" onclick="addToPortfolioFromForm(event)">
+                                <i class="fa-solid fa-plus"></i> Add / Update Holding
                             </button>
                         </div>
                     </div>
@@ -146,6 +146,7 @@
                                     <th style="padding: 12px;">Ticker</th>
                                     <th style="padding: 12px;">Last Price</th>
                                     <th style="padding: 12px;">Avg Cost</th>
+                                    <th style="padding: 12px;">Qty</th>
                                     <th style="padding: 12px;">P/L ($/%)</th>
                                     <th style="padding: 12px;">Action</th>
                                 </tr>
