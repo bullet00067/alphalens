@@ -989,25 +989,46 @@ tbody tr:hover {
         padding: 12px 16px;
     }
 
-    .search-container {
-        max-width: none;
-    }
-
-    .welcome-banner {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 20px;
-        padding: 20px;
-    }
-
-    .welcome-banner h1 {
-        font-size: 22px;
-    }
-
-    .stock-header {
-        flex-direction: column;
-        align-items: flex-start;
+    .indices-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         gap: 12px;
+    }
+
+    /* Landscape specific optimization for 3 columns and vertical space */
+    @media (max-width: 1024px) and (orientation: landscape) {
+        .indices-grid {
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 10px !important;
+            margin-bottom: 16px !important;
+        }
+        
+        .welcome-banner {
+            padding: 12px 16px !important;
+            gap: 8px !important;
+            margin-bottom: 16px !important;
+        }
+
+        .welcome-banner h1 {
+            font-size: 18px !important;
+        }
+
+        .welcome-banner p {
+            font-size: 13px !important;
+        }
+
+        .section-title {
+            margin-bottom: 8px !important;
+            font-size: 16px !important;
+        }
+
+        .top-bar {
+            height: 50px !important;
+            padding: 4px 12px !important;
+        }
+        
+        .main-content {
+            padding: 8px !important;
+        }
     }
 
     .stock-price-info {

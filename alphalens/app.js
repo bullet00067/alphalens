@@ -134,9 +134,10 @@ function initResponsiveNavigation() {
         menuToggle.addEventListener('click', toggleSidebar);
         overlay.addEventListener('click', closeSidebar);
 
-    navLinks.forEach(link => {
-        link.addEventListener('click', closeSidebar);
-    });
+        navLinks.forEach(link => {
+            link.addEventListener('click', closeSidebar);
+        });
+    }
 }
 
 // Ensure toggleAddForm is truly global and functional
