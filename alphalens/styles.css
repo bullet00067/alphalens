@@ -30,6 +30,8 @@ body {
     background-color: var(--bg-main);
     color: var(--text-primary);
     overflow-x: hidden;
+    width: 100%;
+    position: relative;
 }
 
 /* Glassmorphism Utilities */
@@ -1022,6 +1024,15 @@ tbody tr:hover {
 
     .view {
         padding: 0 16px;
+        width: 100%;
+        overflow-x: hidden;
+    }
+
+    .table-container {
+        overflow: visible !important;
+        max-height: none !important;
+        border: none !important;
+        box-shadow: none !important;
     }
 
     .stock-detail-grid {
@@ -1050,25 +1061,18 @@ tbody tr:hover {
         display: none !important;
     }
 
-    .table-container table, 
-    .table-container tbody, 
-    .table-container th, 
-    .table-container td, 
-    .table-container tr {
-        display: block;
-    }
-
-    .table-container tr {
+    .table-container tbody tr {
         background: rgba(255, 255, 255, 0.03);
-        margin-bottom: 16px;
+        margin-bottom: 20px;
         border-radius: 16px;
         border: 1px solid var(--border-glass);
-        padding: 16px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        padding: 20px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
         display: grid !important;
         grid-template-columns: 1fr 1fr;
-        gap: 8px;
+        gap: 12px;
         position: relative;
+        width: 100%;
     }
 
     .table-container td {
@@ -1078,21 +1082,23 @@ tbody tr:hover {
         text-align: left !important;
         min-height: auto !important;
         background: transparent !important;
+        border: none !important;
     }
 
     .table-container td:before {
-        position: static !important;
+        content: attr(data-label);
         display: block !important;
         margin-bottom: 4px;
-        font-size: 10px !important;
-        opacity: 0.6;
+        font-size: 11px !important;
+        font-weight: 500;
+        color: var(--text-secondary);
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
 
     .table-container td[data-label="Ticker"] {
         grid-column: span 2;
-        border-bottom: 1px solid rgba(255,255,255,0.05);
+        border-bottom: 1px solid rgba(255,255,255,0.05) !important;
         margin-bottom: 8px;
         padding-bottom: 12px !important;
         flex-direction: row !important;
@@ -1100,9 +1106,16 @@ tbody tr:hover {
         justify-content: space-between;
     }
 
+    .table-container td[data-label="Ticker"]:before {
+        display: none !important;
+    }
+
     .table-container td[data-label="Ticker"] .ticker-badge {
         font-size: 1.1em !important;
         font-weight: 700;
+        white-space: normal;
+        word-break: break-word;
+        max-width: 80%;
     }
 
     .table-container td[data-label="P/L"] {
@@ -1118,7 +1131,7 @@ tbody tr:hover {
 
     .table-container td[data-label="P/L"]:before {
         margin-bottom: 0;
-        font-size: 12px !important;
+        font-size: 11px !important;
     }
 
     .table-container td[data-label="P/L"] div:last-child {
@@ -1135,13 +1148,25 @@ tbody tr:hover {
         color: #ff4444;
     }
 
-    .table-container td[data-label="Action"] {
-        grid-column: span 2;
-        border-top: 1px solid rgba(255,255,255,0.05);
-        margin-top: 4px;
-        padding-top: 12px !important;
-        justify-content: center !important;
+    .table-container td[data-label="Signal"] {
+        grid-column: 1 / 2;
+        flex-direction: row !important;
         align-items: center;
+        gap: 8px;
+        padding-top: 12px !important;
+        border-top: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .table-container td[data-label="Action"] {
+        grid-column: 2 / 3;
+        padding-top: 12px !important;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        justify-content: flex-end !important;
+        align-items: center;
+    }
+    
+    .table-container td[data-label="Action"]:before {
+        display: none !important;
     }
 
     #portfolio-summary {
