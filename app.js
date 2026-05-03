@@ -146,6 +146,29 @@ async function getQuickQuote(ticker) {
     return null;
 }
 
+// --- News Helpers ---
+function getRelativeTime(timestamp) {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - timestamp;
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleDateString();
+}
+
+async function fetchMarketNews() {
+    if (!FINNHUB_API_KEY) return null;
+    try {
+        const res = await fetch(`${FINNHUB_BASE}/news?category=general&token=${FINNHUB_API_KEY}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data.slice(0, 10) : [];
+    } catch (e) {
+        console.error("Failed to fetch news:", e);
+        return null;
+    }
+}
+
 // --- Auth Logic ---
 function initAuth() {
     const btnLogin = document.getElementById('btn-login');
@@ -910,13 +933,21 @@ async function populateDashboard() {
     listEl.innerHTML = html;
 
     // News
-    const mockNews = [
-        { title: 'Global Markets Rally Amid Rate Cut Hopes', source: 'Financial Times', time: '2 hours ago' },
-        { title: 'TSMC Reports Strong Monthly Revenue', source: 'Bloomberg', time: '3 hours ago' }
-    ];
-    document.getElementById('news-list').innerHTML = mockNews.map(news => `
-        <li class="news-item"><h4>${news.title}</h4><span>${news.source} • ${news.time}</span></li>
-    `).join('');
+    const newsListEl = document.getElementById('news-list');
+    fetchMarketNews().then(newsData => {
+        if (!newsData || newsData.length === 0) {
+            newsListEl.innerHTML = '<li class="news-item"><h4>No news available</h4><span>Check VITE_FINNHUB_API_KEY in .env</span></li>';
+            return;
+        }
+        newsListEl.innerHTML = newsData.map(news => `
+            <li class="news-item">
+                <a href="${news.url}" target="_blank" style="text-decoration: none; color: inherit;">
+                    <h4>${news.headline}</h4>
+                    <span>${news.source} • ${getRelativeTime(news.datetime)}</span>
+                </a>
+            </li>
+        `).join('');
+    });
 }
 
 // Stock Detail Logic
