@@ -134,19 +134,18 @@ function initResponsiveNavigation() {
         menuToggle.addEventListener('click', toggleSidebar);
         overlay.addEventListener('click', closeSidebar);
 
-        navLinks.forEach(link => {
-            link.addEventListener('click', closeSidebar);
-        });
-    }
-
-    // Expose toggle function for portfolio form
-    window.toggleAddForm = () => {
-        const panel = document.getElementById('add-holding-panel');
-        if (panel) {
-            panel.classList.toggle('expanded');
-        }
-    };
+    navLinks.forEach(link => {
+        link.addEventListener('click', closeSidebar);
+    });
 }
+
+// Ensure toggleAddForm is truly global and functional
+window.toggleAddForm = function() {
+    const panel = document.getElementById('add-holding-panel');
+    if (panel) {
+        panel.classList.toggle('expanded');
+    }
+};
 
 function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
@@ -170,12 +169,35 @@ function switchView(viewId) {
     }
 }
 
+// Common TW Stocks mapping for name-to-ticker resolution
+const TW_NAME_MAP = {
+    '台積電': '2330.TW',
+    '鴻海': '2317.TW',
+    '群聯': '8299.TWO',
+    '聯發科': '2454.TW',
+    '長榮': '2603.TW',
+    '陽明': '2609.TW',
+    '萬海': '2615.TW'
+};
+
 // Check if ticker is TW
 function isTaiwanStock(ticker) {
     if (!ticker) return false;
-    // Detect Chinese characters - if it has Chinese, it's definitely a TW stock search
-    if (/[ \u4e00-\u9fa5]/.test(ticker)) return true;
-    return /^\d{4,6}$/.test(ticker) || ticker.endsWith('.TW') || ticker.endsWith('.TWO');
+    const cleanTicker = ticker.trim();
+    if (/[ \u4e00-\u9fa5]/.test(cleanTicker)) return true;
+    return /^\d{4,6}$/.test(cleanTicker) || cleanTicker.endsWith('.TW') || cleanTicker.endsWith('.TWO');
+}
+
+function resolveTicker(input) {
+    if (!input) return '';
+    const cleanInput = input.trim();
+    
+    // Check if it's a known name
+    if (TW_NAME_MAP[cleanInput]) return TW_NAME_MAP[cleanInput];
+    
+    // If it's a 4-digit number, auto-append .TW or .TWO logic can be added, 
+    // but for now, we'll keep it as is if it's already a ticker format.
+    return cleanInput;
 }
 
 function cleanTwTicker(ticker) {
@@ -569,9 +591,17 @@ async function renderPortfolio() {
 }
 
 async function addToPortfolioFromForm(event) {
-    const ticker = document.getElementById('port-ticker').value.toUpperCase().trim();
-    const cost = parseFloat(document.getElementById('port-cost').value);
-    const qty = parseInt(document.getElementById('port-qty').value);
+    const tickerInput = document.getElementById('port-ticker');
+    const costInput = document.getElementById('port-cost');
+    const qtyInput = document.getElementById('port-qty');
+
+    if (!tickerInput || !costInput || !qtyInput) return;
+
+    let ticker = tickerInput.value.toUpperCase().trim();
+    ticker = resolveTicker(ticker);
+    
+    const cost = parseFloat(costInput.value);
+    const qty = parseInt(qtyInput.value);
 
     if (!ticker || isNaN(cost) || isNaN(qty)) {
         showToast("Please enter valid Ticker, Cost, and Quantity");

@@ -1046,6 +1046,18 @@ tbody tr:hover {
     }
 
     /* Table to Card Transformation - Premium Upgrade */
+    .table-container thead {
+        display: none !important;
+    }
+
+    .table-container table, 
+    .table-container tbody, 
+    .table-container th, 
+    .table-container td, 
+    .table-container tr {
+        display: block;
+    }
+
     .table-container tr {
         background: rgba(255, 255, 255, 0.03);
         margin-bottom: 16px;
