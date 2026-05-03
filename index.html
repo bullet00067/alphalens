@@ -112,50 +112,50 @@
                     <!-- Populated by JS -->
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 24px;">
+                <div class="portfolio-grid">
                     <!-- Add to Portfolio Form -->
-                    <div class="glass-panel" style="padding: 24px; max-width: 800px;">
+                    <div class="glass-panel" style="padding: 24px;">
                         <h3 style="margin-bottom: 20px;">Add New Holding</h3>
-                        <div style="display: flex; flex-direction: column; gap: 16px;">
-                            <div class="search-box" style="width: 100%; max-width: none;">
-                                <i class="fa-solid fa-tag"></i>
-                                <input type="text" id="port-ticker" placeholder="Ticker (e.g. AAPL or 2330)..." style="width: 100%;">
-                            </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                                <div class="search-box" style="width: 100%; max-width: none;">
-                                    <i class="fa-solid fa-dollar-sign"></i>
-                                    <input type="number" id="port-cost" placeholder="Avg Cost..." step="0.01" style="width: 100%;">
-                                </div>
-                                <div class="search-box" style="width: 100%; max-width: none;">
-                                    <i class="fa-solid fa-layer-group"></i>
-                                    <input type="number" id="port-qty" placeholder="Quantity..." style="width: 100%;">
-                                </div>
-                            </div>
-                            <button class="indicator-btn" style="width: 100%; justify-content: center; background: var(--accent-primary); color: white;" onclick="addToPortfolioFromForm(event)">
-                                <i class="fa-solid fa-plus"></i> Add / Update Holding
-                            </button>
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label for="port-ticker"><i class="fa-solid fa-tag"></i> Ticker</label>
+                            <input type="text" id="port-ticker" class="form-input" placeholder="e.g. AAPL or 2330">
                         </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                            <div class="form-group">
+                                <label for="port-cost"><i class="fa-solid fa-dollar-sign"></i> Avg Cost</label>
+                                <input type="number" id="port-cost" class="form-input" placeholder="0.00" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label for="port-qty"><i class="fa-solid fa-layer-group"></i> Quantity</label>
+                                <input type="number" id="port-qty" class="form-input" placeholder="0">
+                            </div>
+                        </div>
+                        <button class="primary-btn" style="width: 100%; justify-content: center;" onclick="addToPortfolioFromForm(event)">
+                            <i class="fa-solid fa-plus"></i> Add Holding
+                        </button>
                     </div>
 
                     <!-- Portfolio Table -->
-                    <div class="glass-panel" style="padding: 24px; overflow-x: auto;">
+                    <div class="glass-panel" style="padding: 24px;">
                         <h3 style="margin-bottom: 20px;">Current Holdings</h3>
-                        <table style="width: 100%; border-collapse: collapse; color: var(--text-primary); white-space: nowrap;">
-                            <thead>
-                                <tr style="text-align: left; border-bottom: 2px solid var(--border-glass); color: var(--text-secondary); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.5px;">
-                                    <th style="padding: 16px 12px; font-weight: 600;">Ticker</th>
-                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">Last Price</th>
-                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">Avg Cost</th>
-                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">Qty</th>
-                                    <th style="padding: 16px 12px; font-weight: 600; text-align: right;">P/L ($/%)</th>
-                                    <th style="padding: 16px 12px; font-weight: 600; text-align: center;">Signal</th>
-                                    <th style="padding: 16px 12px; font-weight: 600; text-align: center;">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="portfolio-table-body">
-                                <!-- Portfolio items will be rendered here -->
-                            </tbody>
-                        </table>
+                        <div class="table-container">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left;">Ticker</th>
+                                        <th style="text-align: right;">Last Price</th>
+                                        <th style="text-align: right;">Avg Cost</th>
+                                        <th style="text-align: right;">Qty</th>
+                                        <th style="text-align: right;">P/L ($/%)</th>
+                                        <th style="text-align: center;">Signal</th>
+                                        <th style="text-align: center;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="portfolio-table-body">
+                                    <!-- Portfolio items will be rendered here -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -174,52 +174,67 @@
                 </div>
 
                 <div class="stock-detail-grid">
-                    <div class="chart-container glass-panel" style="padding: 12px; display: flex; flex-direction: column;">
-                        <div id="timeframe-bar" style="display: flex; gap: 6px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border-glass);">
-                            <button class="tf-btn" data-tf="15min">15m</button>
-                            <button class="tf-btn" data-tf="1h">60m</button>
-                            <button class="tf-btn active" data-tf="1day">Day</button>
-                            <button class="tf-btn" data-tf="1week">Week</button>
-                            <button class="tf-btn" data-tf="1month">Month</button>
-                            <button class="tf-btn" data-tf="1year">Year</button>
+                    <div class="chart-container glass-panel" style="padding: 24px; display: flex; flex-direction: column;">
+                        <div style="display: flex; gap: 16px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;">
+                            <div id="timeframe-bar" class="control-group">
+                                <button class="tab-btn tf-btn" data-tf="15min">15m</button>
+                                <button class="tab-btn tf-btn" data-tf="1h">60m</button>
+                                <button class="tab-btn tf-btn active" data-tf="1day">Day</button>
+                                <button class="tab-btn tf-btn" data-tf="1week">Week</button>
+                                <button class="tab-btn tf-btn" data-tf="1month">Month</button>
+                                <button class="tab-btn tf-btn" data-tf="1year">Year</button>
+                            </div>
+                            
+                            <div class="chart-toolbar" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1;">
+                                <div class="control-group">
+                                    <span style="font-size: 11px; color: var(--text-secondary); margin: 0 4px;">SMA</span>
+                                    <button class="indicator-btn" data-type="sma" data-period="5">5</button>
+                                    <button class="indicator-btn" data-type="sma" data-period="20">20</button>
+                                    <button class="indicator-btn" data-type="sma" data-period="60">60</button>
+                                    <button class="indicator-btn" data-type="sma" data-period="120">120</button>
+                                </div>
+                                <div class="control-group">
+                                    <span style="font-size: 11px; color: var(--text-secondary); margin: 0 4px;">EMA</span>
+                                    <button class="indicator-btn" data-type="ema" data-period="12">12</button>
+                                    <button class="indicator-btn" data-type="ema" data-period="26">26</button>
+                                </div>
+                                <div class="control-group">
+                                    <button class="indicator-btn" data-type="boll" data-period="20">BOLL</button>
+                                    <button class="indicator-btn" data-type="vol">VOL</button>
+                                    <button class="indicator-btn" data-type="rsi" data-period="14">RSI</button>
+                                </div>
+                                <button class="ghost-btn-danger" id="clear-indicators-btn" style="margin-left: auto; font-size: 13px;" aria-label="Clear all indicators">Clear All</button>
+                            </div>
                         </div>
-                        <div class="chart-toolbar" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-glass); align-items: center;">
-                            <span style="font-size: 12px; color: var(--text-secondary); margin-right: 4px;">SMA</span>
-                            <button class="indicator-btn" data-type="sma" data-period="5">5</button>
-                            <button class="indicator-btn" data-type="sma" data-period="20">20</button>
-                            <button class="indicator-btn" data-type="sma" data-period="60">60</button>
-                            <button class="indicator-btn" data-type="sma" data-period="120">120</button>
-                            <div style="width:1px; height:20px; background: var(--border-glass); margin: 0 4px;"></div>
-                            <span style="font-size: 12px; color: var(--text-secondary); margin-right: 4px;">EMA</span>
-                            <button class="indicator-btn" data-type="ema" data-period="12">12</button>
-                            <button class="indicator-btn" data-type="ema" data-period="26">26</button>
-                            <div style="width:1px; height:20px; background: var(--border-glass); margin: 0 4px;"></div>
-                            <button class="indicator-btn" data-type="boll" data-period="20">BOLL</button>
-                            <button class="indicator-btn" data-type="vol">VOL</button>
-                            <button class="indicator-btn" data-type="rsi" data-period="14">RSI</button>
-                            <button class="indicator-btn danger" id="clear-indicators-btn" style="margin-left: auto;">Clear All</button>
+                        <div id="stockChart" style="position: relative; width: 100%; min-height: 480px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px; border: 1px solid var(--border-glass);">
+                            <div id="chart-tooltip" style="display: none; position: absolute; top: 12px; left: 16px; z-index: 10; pointer-events: none; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid var(--border-glass); border-radius: 8px; padding: 12px; font-size: 13px; color: var(--text-primary); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); min-width: 180px;">
+                                <!-- Tooltip content populated by JS -->
+                            </div>
                         </div>
-                        <div id="stockChart" style="width: 100%; min-height: 360px;"></div>
-                        <div id="rsiChart" style="width: 100%; min-height: 120px; display: none; margin-top: 4px; border-top: 1px solid var(--border-glass);"></div>
+                        <div id="rsiChart" style="width: 100%; min-height: 120px; display: none; margin-top: 8px; border-top: 1px solid var(--border-glass); padding-top: 8px;"></div>
                     </div>
                     
-                    <div class="stats-container glass-panel">
-                        <h3>Key Statistics</h3>
-                        <div class="stats-grid" id="stats-grid">
-                            <!-- Populated by JS -->
+                    <div class="sidebar-column" style="display: flex; flex-direction: column; gap: 24px;">
+                        <div class="stats-container glass-panel">
+                            <h3 style="margin-bottom: 16px; font-size: 16px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Key Statistics</h3>
+                            <div class="stats-grid" id="stats-grid">
+                                <!-- Populated by JS -->
+                            </div>
+                            <div id="ai-signal-card" style="display: none; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-glass);">
+                                <!-- AI Trade Signals will appear here -->
+                            </div>
                         </div>
-                        <div id="ai-signal-card" style="display: none;">
-                            <!-- AI Trade Signals will appear here -->
-                        </div>
-                    </div>
-                </div>
 
-                <div class="ai-analysis-container glass-panel mt-4">
-                    <h3>AI Quick Analysis</h3>
-                    <div id="ai-quick-summary" style="margin-top: 15px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
-                        Loading analysis...
+                        <div class="ai-analysis-container glass-panel">
+                            <h3 style="margin-bottom: 12px; font-size: 16px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">AI Quick Analysis</h3>
+                            <div id="ai-quick-summary" style="margin-top: 8px; font-size: 14px; color: var(--text-primary); line-height: 1.6; background: rgba(255,255,255,0.03); padding: 16px; border-radius: 8px; border: 1px solid var(--border-glass);">
+                                Loading analysis...
+                            </div>
+                            <button class="secondary-btn mt-2" id="deep-dive-btn" style="width: 100%; margin-top: 16px; border-color: rgba(255,255,255,0.1); color: var(--text-primary);">
+                                <i class="fa-solid fa-robot"></i> Deep Dive in Chat
+                            </button>
+                        </div>
                     </div>
-                    <button class="secondary-btn mt-2" id="deep-dive-btn">Deep Dive in Chat</button>
                 </div>
             </section>
 
@@ -240,7 +255,7 @@
                     </div>
                     <div class="chat-input-container">
                         <input type="text" id="chat-input" placeholder="Type your message here...">
-                        <button id="send-msg-btn"><i class="fa-solid fa-paper-plane"></i></button>
+                        <button id="send-msg-btn" aria-label="Send Message" title="Send Message"><i class="fa-solid fa-paper-plane"></i></button>
                     </div>
                 </div>
             </section>

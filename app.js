@@ -1,4 +1,4 @@
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, updateDoc } from "firebase/firestore";
@@ -23,6 +23,9 @@ const defaultWatchlist = ['AAPL', 'TSLA', '2330', 'NVDA'];
 let currentWatchlist = []; // Loaded from Firebase or local
 let currentStockChart = null;
 let candlestickSeries = null;
+let volumeSeries = null;
+let pipSeries = null;
+let pipMarkersPlugin = null;
 let smaSeriesList = [];
 let currentChartData = []; // Store OHLC data for indicator calculation
 let currentTimeframe = '1day';
@@ -436,7 +439,7 @@ async function renderPortfolio() {
                 <div style="font-size: 0.85em; opacity: 0.8; margin-top: 2px;">${plPercent.toFixed(2)}%</div>
             </td>
             <td id="port-sig-${index}" style="padding: 16px 12px; text-align: center;"><i class="fa-solid fa-spinner fa-spin" style="color: var(--text-secondary);"></i></td>
-            <td style="padding: 16px 12px; text-align: center;"><button class="indicator-btn danger" style="padding: 6px 10px; opacity: 0.7;" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
+            <td style="padding: 16px 12px; text-align: center;"><button class="ghost-btn-danger" aria-label="Delete Holding" title="Delete Holding" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
         `;
         row.style.cursor = 'pointer';
         row.onclick = (e) => {
@@ -1176,11 +1179,10 @@ async function loadChartData(ticker, tf) {
 }
 
 // --- Indicator State ---
-let volumeSeries = null;
 let bollingerSeries = { upper: null, mid: null, lower: null };
 let rsiChart = null;
 let rsiSeries = null;
-let pipSeries = null;
+let currentPipMarkers = [];
 
 // --- Charting ---
 function renderTradingViewChart(data) {
@@ -1206,6 +1208,9 @@ function renderTradingViewChart(data) {
     });
     candlestickSeries.setData(data);
     
+    // Add Markers Plugin
+    pipMarkersPlugin = createSeriesMarkers(candlestickSeries, []);
+    
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
         color: 'rgba(234, 179, 8, 0.8)', // Yellowish
@@ -1222,34 +1227,118 @@ function renderTradingViewChart(data) {
         // Debounce calculation to maintain 60fps
         if (pipTimeout) clearTimeout(pipTimeout);
         pipTimeout = setTimeout(() => {
-            const startIdx = Math.max(0, Math.floor(logicalRange.from));
-            const endIdx = Math.min(data.length - 1, Math.ceil(logicalRange.to));
-            
-            if (endIdx - startIdx > 5) {
-                const visibleData = data.slice(startIdx, endIdx + 1);
-                const pips = findPIPs(visibleData);
-                pipSeries.setData(pips);
+            try {
+                const startIdx = Math.max(0, Math.floor(logicalRange.from));
+                const endIdx = Math.min(data.length - 1, Math.ceil(logicalRange.to));
                 
-                // Add distinct markers to PIPs with Date and Price
-                const markers = pips.map((p, idx) => {
-                    const isHigh = idx > 0 && idx < pips.length - 1 && p.value > pips[idx-1].value && p.value > pips[idx+1].value;
-                    const dObj = new Date(p.time * 1000);
-                    const dateStr = `${dObj.getFullYear()}/${(dObj.getMonth()+1).toString().padStart(2,'0')}/${dObj.getDate().toString().padStart(2,'0')}`;
-                    return {
-                        time: p.time,
-                        position: isHigh ? 'aboveBar' : 'belowBar',
-                        color: '#eab308',
-                        shape: 'circle',
-                        text: `${dateStr} | P: $${p.value.toFixed(2)} | V: ${formatCompactNumber(p.volume || 0)}`
-                    };
-                });
-                pipSeries.setMarkers(markers);
+                if (endIdx - startIdx > 5) {
+                    const visibleData = data.slice(startIdx, endIdx + 1);
+                    const pips = findPIPs(visibleData);
+                    pipSeries.setData(pips);
+                    
+                    // Add distinct markers to PIPs with Date and Price
+                    const markers = pips.map((p, idx) => {
+                        let isHigh;
+                        if (idx > 0 && idx < pips.length - 1) {
+                            isHigh = p.value > pips[idx-1].value && p.value > pips[idx+1].value;
+                        } else if (idx === 0 && pips.length > 1) {
+                            isHigh = p.value > pips[1].value;
+                        } else if (idx === pips.length - 1 && pips.length > 1) {
+                            isHigh = p.value > pips[idx-1].value;
+                        } else {
+                            isHigh = true;
+                        }
+                        return {
+                            time: p.time,
+                            position: isHigh ? 'aboveBar' : 'belowBar',
+                            color: isHigh ? '#ef4444' : '#10b981', // Red for peak, Green for trough
+                            shape: isHigh ? 'arrowDown' : 'arrowUp'
+                        };
+                    });
+                    currentPipMarkers = markers;
+                    pipMarkersPlugin.setMarkers(markers);
+                }
+            } catch (e) {
+                console.error("ERROR IN PIP MARKERS:", e);
             }
         }, CHART_UPDATE_DEBOUNCE_MS);
     });
     
     // Enable volume by default
     toggleVolume(true);
+
+    // Initial PIP markers to ensure they show up immediately
+    try {
+        const initialPips = findPIPs(data);
+        pipSeries.setData(initialPips);
+        const initialMarkers = initialPips.map((p, idx) => {
+            let isHigh;
+            if (idx > 0 && idx < initialPips.length - 1) {
+                isHigh = p.value > initialPips[idx-1].value && p.value > initialPips[idx+1].value;
+            } else if (idx === 0 && initialPips.length > 1) {
+                isHigh = p.value > initialPips[1].value;
+            } else if (idx === initialPips.length - 1 && initialPips.length > 1) {
+                isHigh = p.value > initialPips[idx-1].value;
+            } else {
+                isHigh = true;
+            }
+            return {
+                time: p.time,
+                position: isHigh ? 'aboveBar' : 'belowBar',
+                color: isHigh ? '#ef4444' : '#10b981',
+                shape: isHigh ? 'arrowDown' : 'arrowUp'
+            };
+        });
+        currentPipMarkers = initialMarkers;
+        pipMarkersPlugin.setMarkers(initialMarkers);
+    } catch (e) {
+        console.error("Initial PIP markers failed:", e);
+    }
+
+    // Interactive Marker Hover Logic
+    currentStockChart.subscribeCrosshairMove((param) => {
+        if (!param.time || currentPipMarkers.length === 0) {
+            if (currentPipMarkers.some(m => m.text)) {
+                const cleaned = currentPipMarkers.map(m => {
+                    const newM = { ...m };
+                    delete newM.text;
+                    return newM;
+                });
+                pipMarkersPlugin.setMarkers(cleaned);
+            }
+            return;
+        }
+
+        const hoveredMarker = currentPipMarkers.find(m => m.time === param.time);
+        
+        if (hoveredMarker) {
+            const candle = data.find(d => d.time === param.time);
+            if (candle) {
+                const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
+                if (hoveredMarker.text !== text) {
+                    const updated = currentPipMarkers.map(m => {
+                        if (m.time === param.time) {
+                            return { ...m, text: text };
+                        } else {
+                            const newM = { ...m };
+                            delete newM.text;
+                            return newM;
+                        }
+                    });
+                    pipMarkersPlugin.setMarkers(updated);
+                }
+            }
+        } else {
+            if (currentPipMarkers.some(m => m.text)) {
+                const cleaned = currentPipMarkers.map(m => {
+                    const newM = { ...m };
+                    delete newM.text;
+                    return newM;
+                });
+                pipMarkersPlugin.setMarkers(cleaned);
+            }
+        }
+    });
 
     
     // Scale Optimization: Show exactly 60 candles by default regardless of timeframe
