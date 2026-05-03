@@ -1,0 +1,38 @@
+{
+  "hash": "c86aec39",
+  "configHash": "07631d6b",
+  "lockfileHash": "e51baf61",
+  "browserHash": "3374cd74",
+  "optimized": {
+    "firebase/app": {
+      "src": "../../node_modules/firebase/app/dist/esm/index.esm.js",
+      "file": "firebase_app.js",
+      "fileHash": "2a40d6eb",
+      "needsInterop": false
+    },
+    "firebase/auth": {
+      "src": "../../node_modules/firebase/auth/dist/esm/index.esm.js",
+      "file": "firebase_auth.js",
+      "fileHash": "c1c29118",
+      "needsInterop": false
+    },
+    "firebase/firestore": {
+      "src": "../../node_modules/firebase/firestore/dist/esm/index.esm.js",
+      "file": "firebase_firestore.js",
+      "fileHash": "980d2318",
+      "needsInterop": false
+    },
+    "lightweight-charts": {
+      "src": "../../node_modules/lightweight-charts/dist/lightweight-charts.development.mjs",
+      "file": "lightweight-charts.js",
+      "fileHash": "68c7094a",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "index.esm-D5V83ESt": {
+      "file": "index.esm-D5V83ESt.js",
+      "isDynamicEntry": false
+    }
+  }
+}
