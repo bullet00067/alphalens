@@ -1044,4 +1044,102 @@ tbody tr:hover {
     .index-price {
         font-size: 20px;
     }
+
+    /* Table to Card Transformation */
+    .table-container {
+        border: none;
+        background: transparent;
+    }
+
+    .table-container table, 
+    .table-container thead, 
+    .table-container tbody, 
+    .table-container th, 
+    .table-container td, 
+    .table-container tr {
+        display: block;
+    }
+
+    .table-container thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    .table-container tr {
+        background: var(--bg-secondary);
+        margin-bottom: 16px;
+        border-radius: 12px;
+        border: 1px solid var(--border-glass);
+        padding: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .table-container td {
+        border: none;
+        position: relative;
+        padding-left: 50% !important;
+        text-align: right !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+        min-height: 40px;
+    }
+
+    .table-container td:before {
+        position: absolute;
+        left: 12px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        content: attr(data-label);
+        text-align: left;
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    .table-container td[data-label="Ticker"] {
+        padding-left: 12px !important;
+        text-align: left !important;
+        border-bottom: 1px solid var(--border-glass);
+        margin-bottom: 8px;
+        padding-bottom: 12px !important;
+    }
+    
+    .table-container td[data-label="Ticker"]:before {
+        display: none;
+    }
+
+    .table-container td[data-label="Action"] {
+        text-align: center !important;
+        padding-left: 12px !important;
+        margin-top: 8px;
+        border-top: 1px solid var(--border-glass);
+    }
+    
+    .table-container td[data-label="Action"]:before {
+        display: none;
+    }
+
+    #portfolio-summary {
+        flex-direction: column !important;
+    }
+
+    /* Collapsible Form */
+    .collapsible-panel .panel-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out, opacity 0.3s;
+        opacity: 0;
+    }
+
+    .collapsible-panel.expanded .panel-content {
+        max-height: 500px;
+        opacity: 1;
+        margin-top: 16px;
+    }
+
+    .collapsible-panel.expanded #add-form-chevron {
+        transform: rotate(180deg);
+    }
 }

@@ -138,6 +138,14 @@ function initResponsiveNavigation() {
             link.addEventListener('click', closeSidebar);
         });
     }
+
+    // Expose toggle function for portfolio form
+    window.toggleAddForm = () => {
+        const panel = document.getElementById('add-holding-panel');
+        if (panel) {
+            panel.classList.toggle('expanded');
+        }
+    };
 }
 
 function switchView(viewId) {
@@ -495,16 +503,16 @@ async function renderPortfolio() {
         const safeDisplayName = escapeHtml(displayName);
         
         row.innerHTML = `
-            <td style="padding: 16px 12px;"><span class="ticker-badge" style="font-size: 0.95em;">${safeDisplayName}</span></td>
-            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${currentPrice ? formatCurrency(currentPrice, item.ticker) : '...'}</td>
-            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(item.cost, item.ticker)}</td>
-            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${item.qty}</td>
-            <td style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;" class="${pl >= 0 ? 'positive' : 'negative'}">
+            <td data-label="Ticker" style="padding: 16px 12px;"><span class="ticker-badge" style="font-size: 0.95em;">${safeDisplayName}</span></td>
+            <td data-label="Price" style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${currentPrice ? formatCurrency(currentPrice, item.ticker) : '...'}</td>
+            <td data-label="Avg Cost" style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${formatCurrency(item.cost, item.ticker)}</td>
+            <td data-label="Qty" style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;">${item.qty}</td>
+            <td data-label="P/L" style="padding: 16px 12px; text-align: right; font-variant-numeric: tabular-nums;" class="${pl >= 0 ? 'positive' : 'negative'}">
                 <div style="font-weight: 500;">${formatCurrency(pl, item.ticker)}</div>
                 <div style="font-size: 0.85em; opacity: 0.8; margin-top: 2px;">${plPercent.toFixed(2)}%</div>
             </td>
-            <td id="port-sig-${index}" style="padding: 16px 12px; text-align: center;"><i class="fa-solid fa-spinner fa-spin" style="color: var(--text-secondary);"></i></td>
-            <td style="padding: 16px 12px; text-align: center;"><button class="ghost-btn-danger" aria-label="Delete Holding" title="Delete Holding" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
+            <td data-label="Signal" id="port-sig-${index}" style="padding: 16px 12px; text-align: center;"><i class="fa-solid fa-spinner fa-spin" style="color: var(--text-secondary);"></i></td>
+            <td data-label="Action" style="padding: 16px 12px; text-align: center;"><button class="ghost-btn-danger" aria-label="Delete Holding" title="Delete Holding" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
         `;
         row.style.cursor = 'pointer';
         row.onclick = (e) => {

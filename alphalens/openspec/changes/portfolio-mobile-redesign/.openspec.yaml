@@ -1,0 +1,13 @@
+name: portfolio-mobile-redesign
+status: proposed
+created_at: 2026-05-03
+artifacts:
+  - id: proposal
+    path: proposal.md
+  - id: design
+    path: design.md
+  - id: tasks
+    path: tasks.md
+apply:
+  requires:
+    - tasks

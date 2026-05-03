@@ -119,8 +119,12 @@
 
                 <div class="portfolio-grid">
                     <!-- Add to Portfolio Form -->
-                    <div class="glass-panel" style="padding: 24px;">
-                        <h3 style="margin-bottom: 20px;">Add New Holding</h3>
+                    <div class="glass-panel collapsible-panel" id="add-holding-panel" style="padding: 24px;">
+                        <div class="panel-header" onclick="toggleAddForm()" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="margin-bottom: 0;">Add New Holding</h3>
+                            <i class="fa-solid fa-chevron-down" id="add-form-chevron" style="transition: transform 0.3s;"></i>
+                        </div>
+                        <div class="panel-content" id="add-holding-content">
                         <div class="form-group" style="margin-bottom: 16px;">
                             <label for="port-ticker"><i class="fa-solid fa-tag"></i> Ticker</label>
                             <input type="text" id="port-ticker" class="form-input" placeholder="e.g. AAPL or 2330">
@@ -138,6 +142,7 @@
                         <button class="primary-btn" style="width: 100%; justify-content: center;" onclick="addToPortfolioFromForm(event)">
                             <i class="fa-solid fa-plus"></i> Add Holding
                         </button>
+                        </div>
                     </div>
 
                     <!-- Portfolio Table -->
