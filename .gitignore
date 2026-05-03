@@ -5,3 +5,10 @@ dist/
 .env
 .env.local
 .env.production
+
+# Tools & Local Data
+LazyGravity/
+*.db
+debug_logs.txt
+.DS_Store
+
