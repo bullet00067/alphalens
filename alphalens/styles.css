@@ -939,8 +939,8 @@ tbody tr:hover {
     }
 }
 
-/* MOBILE ONLY */
-@media (max-width: 768px) {
+/* MOBILE & TABLET (Portrait & Landscape) */
+@media (max-width: 1024px) {
     .menu-toggle {
         display: block;
     }
@@ -951,8 +951,19 @@ tbody tr:hover {
         top: 0;
         bottom: 0;
         width: 250px !important;
-        z-index: 100;
+        z-index: 2000 !important;
         box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+        background: var(--bg-secondary);
+        transition: left 0.3s ease;
+    }
+
+    .sidebar-overlay {
+        z-index: 1500 !important;
+    }
+
+    .main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
     }
 
     .sidebar.active {
@@ -1197,64 +1208,6 @@ tbody tr:hover {
         display: none !important;
     }
 }
-
-/* Consolidated Mobile/Tablet Navigation (Portrait & Landscape) */
-@media (max-width: 992px) {
-    .menu-toggle {
-        display: flex !important;
-    }
-
-    .sidebar {
-        position: fixed !important;
-        left: -280px !important;
-        top: 0;
-        bottom: 0;
-        width: 250px !important;
-        z-index: 2000 !important; /* Higher than top-bar */
-        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 10px 0 30px rgba(0,0,0,0.5) !important;
-        background: var(--bg-secondary) !important;
-    }
-
-    .sidebar-overlay {
-        z-index: 1500 !important;
-    }
-
-    .top-bar {
-        z-index: 1000 !important;
-    }
-
-    .sidebar.active {
-        left: 0 !important;
-    }
-
-    .sidebar .logo span, 
-    .sidebar .nav-links li span,
-    .sidebar .auth-section button span {
-        display: block !important;
-    }
-
-    .sidebar .nav-links li {
-        justify-content: flex-start !important;
-        padding: 12px 20px !important;
-        font-size: 16px !important;
-    }
-
-    .sidebar .auth-section button {
-        width: 100% !important;
-        height: auto !important;
-        border-radius: 8px !important;
-        padding: 12px !important;
-    }
-
-    .main-content {
-        margin-left: 0 !important;
-        width: 100% !important;
-    }
-
-    .view {
-        padding: 12px 16px !important;
-    }
 
     .top-bar {
         padding: 8px 16px !important;
