@@ -172,6 +172,9 @@ function switchView(viewId) {
 
 // Check if ticker is TW
 function isTaiwanStock(ticker) {
+    if (!ticker) return false;
+    // Detect Chinese characters - if it has Chinese, it's definitely a TW stock search
+    if (/[ \u4e00-\u9fa5]/.test(ticker)) return true;
     return /^\d{4,6}$/.test(ticker) || ticker.endsWith('.TW') || ticker.endsWith('.TWO');
 }
 
@@ -466,19 +469,21 @@ async function renderPortfolio() {
         if (currentMarketTab === 'US' && isTW) continue;
         if (currentMarketTab === 'TW' && !isTW) continue;
 
-        const quote = portfolioQuotes[item.ticker];
-        const currentPrice = quote ? quote.price : 0;
-        const equity = currentPrice * item.qty;
-        const costValue = item.cost * item.qty;
-        const pl = equity - costValue;
-        const plPercent = costValue !== 0 ? (pl / costValue) * 100 : 0;
+        const currentPrice = portfolioQuotes[item.ticker] ? portfolioQuotes[item.ticker].price : 0;
+        const cost = parseFloat(item.cost) || 0;
+        const qty = parseFloat(item.qty) || 0;
+        const price = parseFloat(currentPrice) || 0;
+
+        const pl = price > 0 ? (price * qty) - (cost * qty) : 0;
+        const totalCost = cost * qty;
+        const plPercent = totalCost !== 0 ? (pl / totalCost) * 100 : 0;
         
-        if (isTW) {
-            twEquity += equity;
-            twCost += costValue;
+        if (item.ticker.includes('.TW') || isTaiwanStock(item.ticker)) {
+            twEquity += price * qty;
+            twCost += totalCost;
         } else {
-            usEquity += equity;
-            usCost += costValue;
+            usEquity += price * qty;
+            usCost += totalCost;
         }
 
         let displayName = item.ticker;

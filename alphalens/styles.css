@@ -1045,101 +1045,118 @@ tbody tr:hover {
         font-size: 20px;
     }
 
-    /* Table to Card Transformation */
-    .table-container {
-        border: none;
-        background: transparent;
-    }
-
-    .table-container table, 
-    .table-container thead, 
-    .table-container tbody, 
-    .table-container th, 
-    .table-container td, 
+    /* Table to Card Transformation - Premium Upgrade */
     .table-container tr {
-        display: block;
-    }
-
-    .table-container thead tr {
-        position: absolute;
-        top: -9999px;
-        left: -9999px;
-    }
-
-    .table-container tr {
-        background: var(--bg-secondary);
+        background: rgba(255, 255, 255, 0.03);
         margin-bottom: 16px;
-        border-radius: 12px;
+        border-radius: 16px;
         border: 1px solid var(--border-glass);
-        padding: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        padding: 16px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        position: relative;
     }
 
     .table-container td {
-        border: none;
-        position: relative;
-        padding-left: 50% !important;
-        text-align: right !important;
-        padding-top: 10px !important;
-        padding-bottom: 10px !important;
-        min-height: 40px;
+        display: flex !important;
+        flex-direction: column;
+        padding: 8px !important;
+        text-align: left !important;
+        min-height: auto !important;
+        background: transparent !important;
     }
 
     .table-container td:before {
-        position: absolute;
-        left: 12px;
-        width: 45%;
-        padding-right: 10px;
-        white-space: nowrap;
-        content: attr(data-label);
-        text-align: left;
-        font-weight: 600;
-        color: var(--text-secondary);
-        font-size: 13px;
+        position: static !important;
+        display: block !important;
+        margin-bottom: 4px;
+        font-size: 10px !important;
+        opacity: 0.6;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 
     .table-container td[data-label="Ticker"] {
-        padding-left: 12px !important;
-        text-align: left !important;
-        border-bottom: 1px solid var(--border-glass);
+        grid-column: span 2;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
         margin-bottom: 8px;
         padding-bottom: 12px !important;
+        flex-direction: row !important;
+        align-items: center;
+        justify-content: space-between;
     }
-    
-    .table-container td[data-label="Ticker"]:before {
-        display: none;
+
+    .table-container td[data-label="Ticker"] .ticker-badge {
+        font-size: 1.1em !important;
+        font-weight: 700;
+    }
+
+    .table-container td[data-label="P/L"] {
+        grid-column: span 2;
+        background: rgba(255,255,255,0.02) !important;
+        border-radius: 12px;
+        padding: 12px !important;
+        margin: 8px 0;
+        flex-direction: row !important;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .table-container td[data-label="P/L"]:before {
+        margin-bottom: 0;
+        font-size: 12px !important;
+    }
+
+    .table-container td[data-label="P/L"] div:last-child {
+        background: rgba(0, 255, 136, 0.1);
+        color: #00ff88;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 13px !important;
+    }
+
+    .table-container td[data-label="P/L"].negative div:last-child {
+        background: rgba(255, 68, 68, 0.1);
+        color: #ff4444;
     }
 
     .table-container td[data-label="Action"] {
-        text-align: center !important;
-        padding-left: 12px !important;
-        margin-top: 8px;
-        border-top: 1px solid var(--border-glass);
-    }
-    
-    .table-container td[data-label="Action"]:before {
-        display: none;
+        grid-column: span 2;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        margin-top: 4px;
+        padding-top: 12px !important;
+        justify-content: center !important;
+        align-items: center;
     }
 
     #portfolio-summary {
         flex-direction: column !important;
+        gap: 12px !important;
     }
 
-    /* Collapsible Form */
-    .collapsible-panel .panel-content {
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.3s ease-out, opacity 0.3s;
-        opacity: 0;
+    .summary-card {
+        padding: 20px !important;
+        background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%) !important;
     }
 
-    .collapsible-panel.expanded .panel-content {
-        max-height: 500px;
-        opacity: 1;
-        margin-top: 16px;
+    /* Empty state styling */
+    #portfolio-table-body td[colspan] {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        min-height: 200px !important;
+        text-align: center !important;
+        width: 100% !important;
+        padding: 40px !important;
+        opacity: 0.5;
+        font-style: italic;
+        border: none !important;
     }
-
-    .collapsible-panel.expanded #add-form-chevron {
-        transform: rotate(180deg);
+    
+    #portfolio-table-body td[colspan]:before {
+        display: none !important;
     }
 }
