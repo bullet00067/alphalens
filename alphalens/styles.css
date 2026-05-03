@@ -1198,81 +1198,66 @@ tbody tr:hover {
     }
 }
 
-/* Landscape Optimization for Mobile */
-@media (max-height: 500px) and (orientation: landscape) {
-    .sidebar {
-        width: 70px !important;
-        left: 0 !important;
-        padding: 12px 0 !important;
-        position: relative !important;
-        box-shadow: none !important;
-        flex-shrink: 0 !important;
+/* Consolidated Mobile/Tablet Navigation (Portrait & Landscape) */
+@media (max-width: 992px) {
+    .menu-toggle {
+        display: flex !important;
     }
 
-    .sidebar .logo {
-        padding: 0 !important;
-        justify-content: center !important;
-        margin-bottom: 30px !important;
-        font-size: 0 !important; /* Kill logo text */
+    .sidebar {
+        position: fixed !important;
+        left: -280px !important;
+        top: 0;
+        bottom: 0;
+        width: 250px !important;
+        z-index: 2000 !important; /* Higher than top-bar */
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 10px 0 30px rgba(0,0,0,0.5) !important;
+        background: var(--bg-secondary) !important;
+    }
+
+    .sidebar-overlay {
+        z-index: 1500 !important;
+    }
+
+    .top-bar {
+        z-index: 1000 !important;
+    }
+
+    .sidebar.active {
+        left: 0 !important;
+    }
+
+    .sidebar .logo span, 
+    .sidebar .nav-links li span,
+    .sidebar .auth-section button span {
+        display: block !important;
     }
 
     .sidebar .nav-links li {
-        justify-content: center !important;
-        padding: 15px 0 !important;
-        margin: 0 !important;
-        font-size: 0 !important; /* Kill all ghost text nodes */
-        width: 100% !important;
-    }
-
-    .sidebar .logo i,
-    .sidebar .nav-links li i,
-    .sidebar .auth-section button i {
-        font-size: 20px !important;
-        margin: 0 !important;
-        color: var(--text-primary);
-    }
-
-    .sidebar .nav-links li span,
-    .sidebar .auth-section button span {
-        display: none !important;
-    }
-
-    .sidebar .auth-section {
-        padding: 20px 0 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        gap: 20px !important;
+        justify-content: flex-start !important;
+        padding: 12px 20px !important;
+        font-size: 16px !important;
     }
 
     .sidebar .auth-section button {
-        padding: 0 !important;
-        border-radius: 50% !important;
-        width: 44px !important;
-        height: 44px !important;
-        min-width: 44px !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        background: var(--bg-secondary) !important;
-        border: 1px solid var(--border-glass) !important;
+        width: 100% !important;
+        height: auto !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
     }
 
-    #btn-login {
-        background: var(--accent-primary) !important;
-        color: white !important;
+    .main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+
+    .view {
+        padding: 12px 16px !important;
     }
 
     .top-bar {
         padding: 8px 16px !important;
-    }
-
-    .view {
-        padding: 10px 16px !important;
-    }
-
-    .menu-toggle {
-        display: none !important;
     }
 }
 
