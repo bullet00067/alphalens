@@ -56,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initIndicators();
     initTimeframeSwitcher();
     initPortfolio();
+    initResponsiveNavigation();
     
     // Expose functions for inline onclick handlers (must be after function definitions)
     window.loadStockDetail = loadStockDetail;
@@ -111,13 +112,54 @@ function initNavigation() {
     });
 }
 
+function initResponsiveNavigation() {
+    const menuToggle = document.getElementById('menu-toggle');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const navLinks = document.querySelectorAll('.nav-links li');
+
+    if (menuToggle && sidebar && overlay) {
+        const toggleSidebar = () => {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+            document.body.style.overflow = sidebar.classList.contains('active') ? 'hidden' : '';
+        };
+
+        const closeSidebar = () => {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+            document.body.style.overflow = '';
+        };
+
+        menuToggle.addEventListener('click', toggleSidebar);
+        overlay.addEventListener('click', closeSidebar);
+
+        navLinks.forEach(link => {
+            link.addEventListener('click', closeSidebar);
+        });
+    }
+}
+
 function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
-    document.getElementById(viewId).classList.add('active-view');
+    const targetView = document.getElementById(viewId);
+    if (targetView) {
+        targetView.classList.add('active-view');
+    }
+    
     document.querySelectorAll('.nav-links li').forEach(l => {
         if(l.getAttribute('data-target') === viewId) l.classList.add('active');
         else l.classList.remove('active');
     });
+
+    // Close sidebar on mobile after navigation
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (window.innerWidth <= 768 && sidebar) {
+        sidebar.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    }
 }
 
 // Check if ticker is TW

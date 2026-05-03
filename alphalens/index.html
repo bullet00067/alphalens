@@ -12,6 +12,8 @@
 </head>
 <body>
     <div class="app-container">
+        <!-- Mobile Sidebar Overlay -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
         <!-- Sidebar Navigation -->
         <nav class="sidebar">
             <div class="logo">
@@ -42,6 +44,9 @@
         <main class="main-content">
             <!-- Header -->
             <header class="top-bar">
+                <button class="menu-toggle" id="menu-toggle" aria-label="Toggle Menu">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
                 <div class="search-container">
                     <i class="fa-solid fa-magnifying-glass"></i>
                     <input type="text" id="stock-search" placeholder="Search for a ticker (e.g., AAPL)...">

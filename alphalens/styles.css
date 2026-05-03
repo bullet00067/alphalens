@@ -198,7 +198,8 @@ body {
     border: 1px solid var(--border-glass);
     border-radius: 8px;
     padding: 10px 16px;
-    width: 400px;
+    width: 100%;
+    max-width: 400px;
     transition: var(--transition-fast);
 }
 
@@ -259,6 +260,34 @@ body {
 :focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
+}
+
+/* Mobile Toggle & Overlay */
+.menu-toggle {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 8px;
+    margin-right: 12px;
+}
+
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 90;
+}
+
+.sidebar-overlay.active {
+    display: block;
 }
 
 .user-profile img {
@@ -860,4 +889,159 @@ tbody tr:hover {
     border-color: var(--accent-primary);
     color: white;
     box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+}
+
+/* ============================================================
+   RESPONSIVE MEDIA QUERIES
+   ============================================================ */
+
+/* TABLET & MOBILE SHARED */
+@media (max-width: 1024px) {
+    .sidebar {
+        width: 80px !important;
+        transition: var(--transition-smooth);
+    }
+    
+    .sidebar .logo span, 
+    .sidebar .nav-links li span, 
+    .sidebar .nav-links li::after {
+        display: none !important;
+    }
+    
+    .sidebar .logo {
+        padding: 0;
+        justify-content: center;
+        margin-bottom: 32px;
+    }
+    
+    .sidebar .nav-links {
+        padding: 0 12px;
+    }
+    
+    .sidebar .nav-links li {
+        justify-content: center;
+        padding: 14px;
+    }
+    
+    .sidebar .nav-links li i {
+        font-size: 20px;
+        margin: 0;
+    }
+    
+    .view, .top-bar {
+        padding: 20px;
+    }
+
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* MOBILE ONLY */
+@media (max-width: 768px) {
+    .menu-toggle {
+        display: block;
+    }
+
+    .sidebar {
+        position: fixed;
+        left: -280px;
+        top: 0;
+        bottom: 0;
+        width: 250px !important;
+        z-index: 100;
+        box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+    }
+
+    .sidebar.active {
+        left: 0;
+    }
+
+    .sidebar .logo span, 
+    .sidebar .nav-links li span {
+        display: block !important;
+    }
+    
+    .sidebar .logo {
+        padding: 0 24px 32px !important;
+        justify-content: flex-start !important;
+    }
+    
+    .sidebar .nav-links li {
+        justify-content: flex-start !important;
+        padding: 12px 16px !important;
+    }
+
+    .top-bar {
+        padding: 12px 16px;
+    }
+
+    .search-container {
+        max-width: none;
+    }
+
+    .welcome-banner {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+        padding: 20px;
+    }
+
+    .welcome-banner h1 {
+        font-size: 22px;
+    }
+
+    .stock-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .stock-price-info {
+        text-align: left;
+    }
+
+    .chart-toolbar {
+        overflow-x: auto;
+        padding-bottom: 8px;
+        width: 100%;
+        scrollbar-width: none; /* Hide scrollbar for Chrome/Safari */
+    }
+    
+    .chart-toolbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .control-group {
+        flex-shrink: 0;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .view {
+        padding: 0 16px;
+    }
+
+    .stock-detail-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    #stockChart {
+        min-height: 350px !important;
+    }
+
+    .indices-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+    }
+
+    .index-card {
+        padding: 16px;
+    }
+
+    .index-price {
+        font-size: 20px;
+    }
 }
