@@ -136,7 +136,7 @@ export function findPIPs(candles, useCache = true) {
     }
     
     const bestK = pipNumByMse(pipVdSum);
-    const finalK = Math.min(Math.max(bestK, 3), pipIndexByOrder.length);
+    const finalK = Math.min(Math.max(bestK, 5), pipIndexByOrder.length);
     const bestPipIndices = pipIndexByOrder.slice(0, finalK);
     const resultPips = bestPipIndices.map((idx, i) => ({
         ...data[idx],
@@ -171,8 +171,8 @@ export function analyzeTrend(pips, candles = []) {
         const lastPeaks = peaks.slice(-3).map(p => p.value);
         const peakStd = calculateStdDev(lastPeaks);
         
-        // Adaptive Threshold: Min of 0.5% or half of daily volatility (ATR)
-        const adaptiveThreshold = Math.min(0.005, (atr / currentPrice) * 0.5);
+        // Adaptive Threshold: Min of 1% or half of daily volatility (ATR)
+        const adaptiveThreshold = Math.min(0.01, (atr / currentPrice) * 0.5);
         const dispersion = peakStd / currentPrice;
 
         if (dispersion < adaptiveThreshold) {
@@ -192,6 +192,20 @@ export function analyzeTrend(pips, candles = []) {
         if (isHL && isHH) {
             const avgVd = pips.reduce((sum, p) => sum + (p.vd || 0), 0) / pips.length;
             return { status: 'BULLISH', confidence: Math.min(avgVd, 1.0), peaks, troughs };
+        }
+    }
+
+    // 3. Bearish Structure Detection (LH + LL)
+    if (troughs.length >= 2 && peaks.length >= 2) {
+        const tLen = troughs.length;
+        const pLen = peaks.length;
+        
+        const isLL = troughs[tLen-1].value < troughs[tLen-2].value;
+        const isLH = peaks[pLen-1].value < peaks[pLen-2].value;
+
+        if (isLL && isLH) {
+            const avgVd = pips.reduce((sum, p) => sum + (p.vd || 0), 0) / pips.length;
+            return { status: 'BEARISH', confidence: Math.min(avgVd, 1.0), peaks, troughs };
         }
     }
 

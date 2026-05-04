@@ -1033,6 +1033,11 @@ tbody tr:hover {
         gap: 12px;
     }
 
+    .form-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+
     /* Landscape specific optimization for 3 columns and vertical space */
     @media (max-width: 1024px) and (orientation: landscape) {
         .indices-grid {
@@ -1099,7 +1104,11 @@ tbody tr:hover {
         overflow-x: hidden;
     }
 
-    .table-container {
+    .main-content {
+        overflow-x: hidden !important;
+    }
+
+    .table-responsive {
         overflow: visible !important;
         max-height: none !important;
         border: none !important;
@@ -1128,11 +1137,11 @@ tbody tr:hover {
     }
 
     /* Table to Card Transformation - Premium Upgrade */
-    .table-container thead {
+    .table-responsive thead {
         display: none !important;
     }
 
-    .table-container tbody tr {
+    .table-responsive tbody tr {
         background: rgba(255, 255, 255, 0.03);
         margin-bottom: 20px;
         border-radius: 16px;
@@ -1146,7 +1155,7 @@ tbody tr:hover {
         width: 100%;
     }
 
-    .table-container td {
+    .table-responsive td {
         display: flex !important;
         flex-direction: column;
         padding: 8px !important;
@@ -1156,7 +1165,7 @@ tbody tr:hover {
         border: none !important;
     }
 
-    .table-container td:before {
+    .table-responsive td:before {
         content: attr(data-label);
         display: block !important;
         margin-bottom: 4px;
@@ -1167,7 +1176,7 @@ tbody tr:hover {
         letter-spacing: 0.5px;
     }
 
-    .table-container td[data-label="Ticker"] {
+    .table-responsive td[data-label="Ticker"] {
         grid-column: span 2;
         border-bottom: 1px solid rgba(255,255,255,0.05) !important;
         margin-bottom: 8px;
@@ -1177,11 +1186,11 @@ tbody tr:hover {
         justify-content: space-between;
     }
 
-    .table-container td[data-label="Ticker"]:before {
+    .table-responsive td[data-label="Ticker"]:before {
         display: none !important;
     }
 
-    .table-container td[data-label="Ticker"] .ticker-badge {
+    .table-responsive td[data-label="Ticker"] .ticker-badge {
         font-size: 1.1em !important;
         font-weight: 700;
         white-space: normal;
@@ -1189,7 +1198,7 @@ tbody tr:hover {
         max-width: 80%;
     }
 
-    .table-container td[data-label="P/L"] {
+    .table-responsive td[data-label="P/L"] {
         grid-column: span 2;
         background: rgba(255,255,255,0.02) !important;
         border-radius: 12px;
@@ -1200,12 +1209,12 @@ tbody tr:hover {
         align-items: center;
     }
 
-    .table-container td[data-label="P/L"]:before {
+    .table-responsive td[data-label="P/L"]:before {
         margin-bottom: 0;
         font-size: 11px !important;
     }
 
-    .table-container td[data-label="P/L"] div:last-child {
+    .table-responsive td[data-label="P/L"] div:last-child {
         background: rgba(0, 255, 136, 0.1);
         color: #00ff88;
         padding: 4px 12px;
@@ -1214,12 +1223,12 @@ tbody tr:hover {
         font-size: 13px !important;
     }
 
-    .table-container td[data-label="P/L"].negative div:last-child {
+    .table-responsive td[data-label="P/L"].negative div:last-child {
         background: rgba(255, 68, 68, 0.1);
         color: #ff4444;
     }
 
-    .table-container td[data-label="Signal"] {
+    .table-responsive td[data-label="Signal"] {
         grid-column: 1 / 2;
         flex-direction: row !important;
         align-items: center;
@@ -1228,7 +1237,7 @@ tbody tr:hover {
         border-top: 1px solid rgba(255,255,255,0.05);
     }
 
-    .table-container td[data-label="Action"] {
+    .table-responsive td[data-label="Action"] {
         grid-column: 2 / 3;
         padding-top: 12px !important;
         border-top: 1px solid rgba(255,255,255,0.05);
@@ -1236,7 +1245,7 @@ tbody tr:hover {
         align-items: center;
     }
     
-    .table-container td[data-label="Action"]:before {
+    .table-responsive td[data-label="Action"]:before {
         display: none !important;
     }
 

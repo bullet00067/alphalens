@@ -581,12 +581,12 @@ async function renderObservationList() {
 
         const ticker = obs.ticker;
         row.innerHTML = `
-            <td style="padding: 16px 12px;"><span class="ticker-badge">${ticker}</span></td>
-            <td id="obs-price-${ticker}" style="text-align: right;">...</td>
-            <td id="obs-trend-${ticker}" style="text-align: center;">...</td>
-            <td id="obs-signal-${ticker}" style="text-align: center;">...</td>
-            <td id="obs-conf-${ticker}" style="text-align: center;">...</td>
-            <td style="text-align: center;">
+            <td data-label="Ticker" style="padding: 16px 12px;"><span class="ticker-badge">${ticker}</span></td>
+            <td data-label="Price" id="obs-price-${ticker}" style="text-align: right;">...</td>
+            <td data-label="Trend" id="obs-trend-${ticker}" style="text-align: center;">...</td>
+            <td data-label="Signal" id="obs-signal-${ticker}" style="text-align: center;">...</td>
+            <td data-label="Confidence" id="obs-conf-${ticker}" style="text-align: center;">...</td>
+            <td data-label="Action" style="text-align: center;">
                 <button class="ghost-btn-danger" onclick="removeFromObservation('${ticker}')" title="Stop Observing">
                     <i class="fa-solid fa-eye-slash"></i>
                 </button>
@@ -1104,13 +1104,13 @@ async function saveWatchlist() {
 async function populateDashboard() {
     // Indices (Mock for now, as finding reliable free index APIs is hard)
     const marketIndices = [
-        { name: 'S&P 500', price: '5,087.03', change: '+1.2%', isPositive: true },
-        { name: 'NASDAQ', price: '15,996.82', change: '+1.5%', isPositive: true },
-        { name: 'TWSE', price: '20,466.84', change: '+0.5%', isPositive: true }
+        { name: 'S&P 500', price: '5,087.03', change: '+1.2%', isPositive: true, ticker: '^GSPC' },
+        { name: 'NASDAQ', price: '15,996.82', change: '+1.5%', isPositive: true, ticker: '^IXIC' },
+        { name: 'TWSE', price: '20,466.84', change: '+0.5%', isPositive: true, ticker: '^TWII' }
     ];
     
     document.querySelector('.indices-grid').innerHTML = marketIndices.map(index => `
-        <div class="index-card glass-panel">
+        <div class="index-card glass-panel" onclick="loadStockDetail('${index.ticker}')" style="cursor: pointer;">
             <div class="index-header"><span>${index.name}</span><i class="fa-solid fa-arrow-trend-${index.isPositive ? 'up' : 'down'} ${index.isPositive ? 'positive' : 'negative'}"></i></div>
             <div class="index-price">${index.price}</div>
             <div class="index-change ${index.isPositive ? 'positive' : 'negative'}">${index.change}</div>
@@ -1397,28 +1397,39 @@ async function loadChartData(ticker, tf) {
         const { quote, candles, profile } = data;
         currentChartData = candles;
 
-        document.getElementById('detail-name').textContent = profile.name || ticker;
-        document.getElementById('detail-price').textContent = `$${quote.c.toFixed(2)}`;
+        // Robust Quote Fallback (especially for indices where Finnhub might return empty quotes)
+        const lastCandle = candles.length > 0 ? candles[candles.length - 1] : { close: 0, high: 0, low: 0, open: 0 };
+        const safeQuote = {
+            c: quote?.c || lastCandle.close || 0,
+            d: quote?.d || 0,
+            dp: quote?.dp || 0,
+            h: quote?.h || lastCandle.high || 0,
+            l: quote?.l || lastCandle.low || 0,
+            pc: quote?.pc || lastCandle.open || 0
+        };
+
+        document.getElementById('detail-name').textContent = profile?.name || ticker;
+        document.getElementById('detail-price').textContent = `$${safeQuote.c.toFixed(2)}`;
         
-        const isPositive = quote.d >= 0;
-        const changeText = `${isPositive ? '+' : ''}${quote.d.toFixed(2)} (${quote.dp.toFixed(2)}%)`;
+        const isPositive = safeQuote.d >= 0;
+        const changeText = `${isPositive ? '+' : ''}${safeQuote.d.toFixed(2)} (${safeQuote.dp.toFixed(2)}%)`;
         const changeEl = document.getElementById('detail-change');
         changeEl.textContent = changeText;
         changeEl.className = isPositive ? 'positive' : 'negative';
 
         document.getElementById('stats-grid').innerHTML = `
-            <div class="stat-item"><span class="stat-label">Market Cap</span><span class="stat-value">${profile.marketCapitalization ? '$'+(profile.marketCapitalization/1000).toFixed(2)+'B' : 'N/A'}</span></div>
-            <div class="stat-item"><span class="stat-label">High (Day)</span><span class="stat-value">$${quote.h.toFixed(2)}</span></div>
-            <div class="stat-item"><span class="stat-label">Low (Day)</span><span class="stat-value">$${quote.l.toFixed(2)}</span></div>
-            <div class="stat-item"><span class="stat-label">Prev Close</span><span class="stat-value">$${quote.pc.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Market Cap</span><span class="stat-value">${profile?.marketCapitalization ? '$'+(profile.marketCapitalization/1000).toFixed(2)+'B' : 'N/A'}</span></div>
+            <div class="stat-item"><span class="stat-label">High (Day)</span><span class="stat-value">$${safeQuote.h.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Low (Day)</span><span class="stat-value">$${safeQuote.l.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Prev Close</span><span class="stat-value">$${safeQuote.pc.toFixed(2)}</span></div>
         `;
 
         document.getElementById('ai-quick-summary').innerHTML = `
             <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
                 <span class="badge" style="background: ${isPositive ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}; color: ${isPositive ? '#10B981' : '#EF4444'}; padding: 4px 8px;">
-                    ${isPositive ? '📈' : '📉'} ${quote.dp.toFixed(2)}%
+                    ${isPositive ? '📈' : '📉'} ${safeQuote.dp.toFixed(2)}%
                 </span>
-                <span>${profile.name || ticker} is currently trading at <strong>$${quote.c.toFixed(2)}</strong>.</span>
+                <span>${profile?.name || ticker} is currently trading at <strong>$${safeQuote.c.toFixed(2)}</strong>.</span>
             </div>
         `;
         
