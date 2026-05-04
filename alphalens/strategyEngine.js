@@ -9,14 +9,39 @@ const PIP_MAX_ITERATIONS = 150;
 const pipCache = new Map();
 
 /**
+ * Calculate Standard Deviation of an array
+ */
+export function calculateStdDev(data) {
+    if (data.length === 0) return 0;
+    const mean = data.reduce((sum, val) => sum + val, 0) / data.length;
+    const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
+    return Math.sqrt(variance);
+}
+
+/**
  * Standardize data to Z-scores
  */
 export function standardizeData(data) {
     if (data.length === 0) return { mean: 0, std: 1 };
     const mean = data.reduce((sum, val) => sum + val, 0) / data.length;
-    const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
-    const std = Math.sqrt(variance) || 1;
+    const std = calculateStdDev(data) || 1;
     return { mean, std };
+}
+
+/**
+ * Calculate Average True Range (ATR)
+ */
+export function calculateATR(candles, period = 14) {
+    if (candles.length < period + 1) return 0;
+    const trs = [];
+    for (let i = 1; i < candles.length; i++) {
+        const h = candles[i].high;
+        const l = candles[i].low;
+        const pc = candles[i-1].close;
+        trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+    }
+    const atr = trs.slice(-period).reduce((a, b) => a + b, 0) / period;
+    return atr;
 }
 
 /**
@@ -124,8 +149,9 @@ export function findPIPs(candles, useCache = true) {
 
 /**
  * TrendModule: Identify Bullish/Consolidation status
+ * Optimized with Volatility-Adaptive thresholds
  */
-export function analyzeTrend(pips) {
+export function analyzeTrend(pips, candles = []) {
     if (pips.length < 5) return { status: 'NEUTRAL', confidence: 0 };
 
     const peaks = [];
@@ -136,22 +162,37 @@ export function analyzeTrend(pips) {
         if (pips[i].value < pips[i-1].value && pips[i].value < pips[i+1].value) troughs.push(pips[i]);
     }
 
-    // Bullish: T2 > T1 and P2 > P1
-    if (troughs.length >= 2 && peaks.length >= 2) {
-        const tLen = troughs.length;
-        const pLen = peaks.length;
-        if (troughs[tLen-1].value > troughs[tLen-2].value && peaks[pLen-1].value > peaks[pLen-2].value) {
-            // Calculate confidence based on average VD / Std
-            const avgVd = pips.reduce((sum, p) => sum + (p.vd || 0), 0) / pips.length;
-            return { status: 'BULLISH', confidence: Math.min(avgVd, 1.0), peaks, troughs };
+    const currentPrice = pips[pips.length - 1].value;
+    const atr = candles.length > 20 ? calculateATR(candles) : currentPrice * 0.02;
+    
+    // 1. Consolidation Detection (High Precision)
+    // Rule: Dispersion of last 3 peaks is within adaptive threshold
+    if (peaks.length >= 2) {
+        const lastPeaks = peaks.slice(-3).map(p => p.value);
+        const peakStd = calculateStdDev(lastPeaks);
+        
+        // Adaptive Threshold: Min of 0.5% or half of daily volatility (ATR)
+        const adaptiveThreshold = Math.min(0.005, (atr / currentPrice) * 0.5);
+        const dispersion = peakStd / currentPrice;
+
+        if (dispersion < adaptiveThreshold) {
+            return { status: 'CONSOLIDATION', confidence: 0.85, peaks, troughs, dispersion };
         }
     }
 
-    // Consolidation: Peak variance < 2%
-    if (peaks.length >= 2) {
-        const latestPeaks = peaks.slice(-2);
-        const diff = Math.abs(latestPeaks[1].value - latestPeaks[0].value) / latestPeaks[0].value;
-        if (diff < 0.02) return { status: 'CONSOLIDATION', confidence: 0.8, peaks, troughs };
+    // 2. Bullish Structure Detection
+    if (troughs.length >= 2 && peaks.length >= 2) {
+        const tLen = troughs.length;
+        const pLen = peaks.length;
+        
+        // HH (Higher High) and HL (Higher Low)
+        const isHL = troughs[tLen-1].value > troughs[tLen-2].value;
+        const isHH = peaks[pLen-1].value > peaks[pLen-2].value;
+
+        if (isHL && isHH) {
+            const avgVd = pips.reduce((sum, p) => sum + (p.vd || 0), 0) / pips.length;
+            return { status: 'BULLISH', confidence: Math.min(avgVd, 1.0), peaks, troughs };
+        }
     }
 
     return { status: 'NEUTRAL', confidence: 0.5, peaks, troughs };
@@ -233,7 +274,7 @@ export function generatePIPSignal(candles) {
     }
 
     const pips = findPIPs(candles);
-    const trend = analyzeTrend(pips);
+    const trend = analyzeTrend(pips, candles);
     const entry = evaluateEntry(candles, pips, trend);
     
     if (entry) {

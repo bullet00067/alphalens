@@ -112,11 +112,16 @@
                         <h1>My Portfolio</h1>
                         <p>Track your holdings and AI-driven trade signals.</p>
                     </div>
-                    <div class="market-tabs" id="portfolio-tabs" style="display: flex; gap: 8px; margin-bottom: 16px;">
-                        <button class="tab-btn active" onclick="setMarketTab('ALL')">All</button>
-                        <button class="tab-btn" onclick="setMarketTab('US')">US</button>
-                        <button class="tab-btn" onclick="setMarketTab('TW')">TW</button>
-                    </div>
+                </div>
+
+                <!-- Portfolio Views Toggles (Holdings vs Observations) -->
+                <div class="view-toggles" style="display: flex; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+                    <button class="toggle-btn active" onclick="switchPortfolioTab('HOLDINGS')" id="tab-holdings">
+                        Current Holdings
+                    </button>
+                    <button class="toggle-btn" onclick="switchPortfolioTab('OBSERVATIONS')" id="tab-observations">
+                        Observation List
+                    </button>
                 </div>
 
                 <!-- Portfolio Summary Card -->
@@ -152,26 +157,64 @@
                         </div>
                     </div>
 
-                    <!-- Portfolio Table -->
-                    <div class="glass-panel" style="padding: 24px;">
-                        <h3 style="margin-bottom: 20px;">Current Holdings</h3>
-                        <div class="table-container">
-                            <table>
+                    <!-- Holdings Table Container -->
+                    <div id="holdings-container" class="glass-panel" style="padding: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="margin: 0;">Portfolio Assets</h3>
+                            <div class="market-tabs" id="portfolio-tabs" style="display: flex; gap: 8px;">
+                                <button class="tab-btn active" onclick="setMarketTab('ALL')">All</button>
+                                <button class="tab-btn" onclick="setMarketTab('US')">US</button>
+                                <button class="tab-btn" onclick="setMarketTab('TW')">TW</button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="portfolio-table">
                                 <thead>
                                     <tr>
-                                        <th style="text-align: left;">Ticker</th>
-                                        <th style="text-align: right;">Last Price</th>
-                                        <th style="text-align: right;">Avg Cost</th>
-                                        <th style="text-align: right;">Qty</th>
-                                        <th style="text-align: right;">P/L ($/%)</th>
-                                        <th style="text-align: center;">Signal</th>
-                                        <th style="text-align: center;">Action</th>
+                                        <th>Asset</th>
+                                        <th>Price</th>
+                                        <th>Shares</th>
+                                        <th>Basis</th>
+                                        <th>Market Value</th>
+                                        <th>P/L</th>
+                                        <th>SIGNAL</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
-                                <tbody id="portfolio-table-body">
-                                    <!-- Portfolio items will be rendered here -->
+                                <tbody id="portfolio-list">
+                                    <!-- Populated by JS -->
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- Observation Table Container (Hidden by default) -->
+                    <div id="observations-container" class="glass-panel" style="padding: 24px; display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h3 style="margin: 0;">PIP Observation List</h3>
+                            <p style="font-size: 0.85rem; opacity: 0.7;">Monitoring for tactical entries/exits.</p>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="portfolio-table">
+                                <thead>
+                                    <tr>
+                                        <th>Asset</th>
+                                        <th>Price</th>
+                                        <th>PIP Trend</th>
+                                        <th>Tactical Signal</th>
+                                        <th>Confidence</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="observation-table-list">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="empty-observations" style="text-align: center; padding: 40px; display: none;">
+                            <i class="fa-solid fa-eye-slash" style="font-size: 3rem; opacity: 0.2; margin-bottom: 16px;"></i>
+                            <p>No stocks under observation.</p>
+                            <p style="font-size: 0.85rem; opacity: 0.6;">Search for a ticker and click "Add to Observation" to start tracking.</p>
                         </div>
                     </div>
                 </div>

@@ -68,6 +68,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.signInWithGoogle = signInWithGoogle;
     window.signOutUser = signOutUser;
     window.setMarketTab = setMarketTab;
+    window.switchPortfolioTab = switchPortfolioTab;
+    window.removeFromObservation = removeFromObservation;
     
     document.getElementById('ask-ai-banner-btn').addEventListener('click', () => {
         switchView('assistant-view');
@@ -319,6 +321,7 @@ async function fetchObservationList() {
         querySnapshot.forEach(doc => {
             observationList.push({ id: doc.id, ...doc.data() });
         });
+        if (currentPortfolioTab === 'OBSERVATIONS') renderObservationList();
     } catch (e) {
         console.error("Fetch Observation Error:", e);
     }
@@ -332,10 +335,12 @@ async function addToObservation(ticker) {
     }
     try {
         if (observationList.some(o => o.ticker === ticker)) return;
-        const docRef = await doc(collection(db, `users/${user.uid}/observations`));
-        await setDoc(docRef, { ticker, date: new Date().toISOString() });
-        observationList.push({ id: docRef.id, ticker });
+        const docRef = doc(collection(db, `users/${user.uid}/observations`));
+        const data = { ticker, date: new Date().toISOString() };
+        await setDoc(docRef, data);
+        observationList.push({ id: docRef.id, ...data });
         updateObservationButton(ticker);
+        if (currentPortfolioTab === 'OBSERVATIONS') renderObservationList();
         showToast(`Added ${ticker} to Observation List`);
     } catch (e) {
         console.error("Add Observation Error:", e);
@@ -351,6 +356,7 @@ async function removeFromObservation(ticker) {
         await deleteDoc(doc(db, `users/${user.uid}/observations`, obs.id));
         observationList = observationList.filter(o => o.ticker !== ticker);
         updateObservationButton(ticker);
+        if (currentPortfolioTab === 'OBSERVATIONS') renderObservationList();
         showToast(`Removed ${ticker} from Observation List`);
     } catch (e) {
         console.error("Remove Observation Error:", e);
@@ -519,6 +525,139 @@ async function saveCloudWatchlist(uid) {
 
 // --- Portfolio Logic ---
 let portfolioQuotes = {};
+let currentPortfolioTab = 'HOLDINGS'; // 'HOLDINGS' or 'OBSERVATIONS'
+
+function switchPortfolioTab(tab) {
+    currentPortfolioTab = tab;
+    
+    // UI Update
+    document.querySelectorAll('.view-toggles .toggle-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    const holdingsContainer = document.getElementById('holdings-container');
+    const observationsContainer = document.getElementById('observations-container');
+    const summaryCard = document.getElementById('portfolio-summary');
+    const addForm = document.getElementById('add-holding-panel');
+
+    if (tab === 'HOLDINGS') {
+        document.getElementById('tab-holdings').classList.add('active');
+        holdingsContainer.style.display = 'block';
+        observationsContainer.style.display = 'none';
+        summaryCard.style.display = 'flex';
+        addForm.style.display = 'block';
+        renderPortfolio();
+    } else {
+        document.getElementById('tab-observations').classList.add('active');
+        holdingsContainer.style.display = 'none';
+        observationsContainer.style.display = 'block';
+        summaryCard.style.display = 'none';
+        addForm.style.display = 'none';
+        renderObservationList();
+    }
+}
+
+async function renderObservationList() {
+    const listBody = document.getElementById('observation-table-list');
+    const emptyState = document.getElementById('empty-observations');
+    if (!listBody) return;
+
+    if (observationList.length === 0) {
+        listBody.innerHTML = '';
+        emptyState.style.display = 'block';
+        return;
+    }
+    
+    emptyState.style.display = 'none';
+    listBody.innerHTML = '';
+
+    for (const obs of observationList) {
+        const row = document.createElement('tr');
+        row.style.cursor = 'pointer';
+        row.onclick = (e) => {
+            if (e.target.closest('button')) return;
+            loadStockDetail(obs.ticker);
+        };
+
+        const ticker = obs.ticker;
+        row.innerHTML = `
+            <td style="padding: 16px 12px;"><span class="ticker-badge">${ticker}</span></td>
+            <td id="obs-price-${ticker}" style="text-align: right;">...</td>
+            <td id="obs-trend-${ticker}" style="text-align: center;">...</td>
+            <td id="obs-signal-${ticker}" style="text-align: center;">...</td>
+            <td id="obs-conf-${ticker}" style="text-align: center;">...</td>
+            <td style="text-align: center;">
+                <button class="ghost-btn-danger" onclick="removeFromObservation('${ticker}')" title="Stop Observing">
+                    <i class="fa-solid fa-eye-slash"></i>
+                </button>
+            </td>
+        `;
+        listBody.appendChild(row);
+
+        // Async fetch and update
+        updateObservationRow(ticker);
+    }
+}
+
+async function updateObservationRow(ticker) {
+    const quote = await getQuickQuote(ticker);
+    const priceCell = document.getElementById(`obs-price-${ticker}`);
+    if (priceCell && quote) {
+        priceCell.textContent = formatCurrency(quote.price, ticker);
+    }
+
+    const history = await fetchStockHistoryCached(ticker, '1day');
+    if (history && history.candles) {
+        const pips = findPIPs(history.candles);
+        const trend = analyzeTrend(pips, history.candles);
+        const signal = generatePIPSignal(history.candles);
+
+        const trendCell = document.getElementById(`obs-trend-${ticker}`);
+        const signalCell = document.getElementById(`obs-signal-${ticker}`);
+        const confCell = document.getElementById(`obs-conf-${ticker}`);
+
+        if (trendCell) {
+            trendCell.innerHTML = `<span style="color: ${trend.status === 'BULLISH' ? '#22c55e' : (trend.status === 'CONSOLIDATION' ? '#eab308' : 'var(--text-secondary)')}">${trend.status}</span>`;
+        }
+        if (signalCell) {
+            signalCell.innerHTML = `<span style="color: ${signal.color}">${signal.text}</span>`;
+        }
+        if (confCell) {
+            confCell.textContent = `${(trend.confidence * 100).toFixed(0)}%`;
+        }
+        
+        // Cache this for the AI Assistant
+        updateTacticalCache(ticker, trend, signal);
+    }
+}
+
+// Tactical Cache for AI Assistant
+let tacticalCache = {};
+let lastCacheUpdate = 0;
+
+function updateTacticalCache(ticker, trend, signal) {
+    tacticalCache[ticker] = {
+        ticker,
+        status: trend.status,
+        signal: signal.text,
+        confidence: trend.confidence,
+        timestamp: Date.now()
+    };
+    lastCacheUpdate = Date.now();
+}
+
+/**
+ * Returns a summarized string of all high-confidence signals for AI prompt injection
+ */
+export function getGlobalTacticalContext() {
+    const activeSignals = Object.values(tacticalCache)
+        .filter(item => item.confidence > 0.6)
+        .map(item => `${item.ticker}: ${item.status} (${item.signal})`);
+    
+    if (activeSignals.length === 0) return "No significant tactical signals detected in portfolio/observations.";
+    return "Active Tactical Signals: " + activeSignals.join(", ");
+}
+window.getGlobalTacticalContext = getGlobalTacticalContext;
 
 async function fetchPortfolioQuotes() {
     if (currentPortfolio.length === 0) {
@@ -1853,13 +1992,28 @@ function handleUserMessage() {
             return;
         }
 
-        // Gemini AI is temporarily disabled. Replace 'if (false)' with 'if (GEMINI_API_KEY)' to re-enable.
-        if (false) {
-            // ... Gemini call placeholder ...
+        // Gemini AI Call
+        if (GEMINI_API_KEY) {
+            try {
+                const tacticalContext = getGlobalTacticalContext();
+                const systemPrompt = `You are AlphaLens AI Assistant. Current tactical state: ${tacticalContext}. 
+                Current Ticker in focus: ${currentTicker || 'None'}.
+                User says: "${text}"
+                
+                Please provide a professional, concise analysis. Use markdown for emphasis. 
+                If the user asks to draw indicators, the system handles that separately, so just confirm you understand.`;
+                
+                const response = await callGeminiAPI(systemPrompt, GEMINI_API_KEY);
+                document.getElementById(typingId).remove();
+                addAiMessage(formatMarkdown(response));
+            } catch (err) {
+                document.getElementById(typingId).remove();
+                addAiMessage(`❌ AI Error: ${err.message}. Please check your connection or API key.`);
+            }
         } else {
             // Mock / Disabled Response
             document.getElementById(typingId).remove();
-            let response = '🚧 AI analysis is temporarily disabled while we finalize the chart features. Come back soon!';
+            let response = '🚧 AI analysis is temporarily disabled (No GEMINI_API_KEY found in .env).';
             addAiMessage(response);
         }
 
@@ -1867,7 +2021,7 @@ function handleUserMessage() {
 }
 
 async function callGeminiAPI(prompt, apiKey) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
     const payload = {
         contents: [{
             parts: [{ text: prompt }]
