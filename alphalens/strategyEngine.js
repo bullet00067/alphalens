@@ -303,6 +303,7 @@ export function generatePIPSignal(candles) {
 
     // Default trend-based status
     if (trend.status === 'BULLISH') return { signal: 'HOLD', text: '🔵 多頭持股', color: '#3b82f6', confidence: trend.confidence };
+    if (trend.status === 'BEARISH') return { signal: 'NEUTRAL', text: '🔴 空頭勢頭', color: '#ef4444', confidence: trend.confidence };
     if (trend.status === 'CONSOLIDATION') return { signal: 'NEUTRAL', text: '🟡 區間盤整', color: '#eab308', confidence: trend.confidence };
     
     return { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', confidence: 0 };

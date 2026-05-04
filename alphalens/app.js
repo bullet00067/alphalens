@@ -729,7 +729,7 @@ function formatCompactNumber(num) {
 }
 
 async function renderPortfolio() {
-    const tableBody = document.getElementById('portfolio-table-body');
+    const tableBody = document.getElementById('portfolio-list');
     const summaryContainer = document.getElementById('portfolio-summary');
     if (!tableBody) return;
 
@@ -908,9 +908,17 @@ async function addToPortfolioFromForm(event) {
             showToast(`Added ${ticker} to local portfolio`);
         }
         localStorage.setItem('myPortfolio', JSON.stringify(currentPortfolio));
-        renderPortfolio();
-        fetchPortfolioQuotes();
     }
+
+    // Auto switch tab to added stock market
+    const isTW = isTaiwanStock(ticker);
+    currentMarketTab = isTW ? 'TW' : 'US';
+    document.querySelectorAll('#portfolio-tabs .tab-btn').forEach(b => {
+        b.classList.toggle('active', b.textContent.includes(isTW ? 'TW' : 'US'));
+    });
+
+    renderPortfolio();
+    fetchPortfolioQuotes();
     
     if (btn) {
         btn.innerHTML = originalHtml;
@@ -1259,7 +1267,8 @@ async function fetchTwseCandles(ticker, tf) {
         candles = aggregateCandles(candles, tf);
     }
     
-    return { quote, candles, profile: { name: `TWSE: ${twTicker}` } };
+    const name = await getTaiwanStockName(twTicker);
+    return { quote, candles, profile: { name: name ? `${twTicker} ${name}` : `TWSE: ${twTicker}` } };
 }
 
 async function fetchUSCandles(ticker, finnhubKey, tf) {
@@ -1282,7 +1291,14 @@ async function fetchUSCandles(ticker, finnhubKey, tf) {
             const apiTf = tf === '1year' ? '1month' : tf;
             const outputSize = (tf === '15min' || tf === '1h') ? 500 : 2520;
             
-            const candleRes = await fetch(`${TWELVEDATA_BASE}/time_series?symbol=${ticker}&interval=${apiTf}&outputsize=${outputSize}&apikey=${TWELVEDATA_API_KEY}`);
+            // Symbol Translation for Indices (Twelve Data uses different formats than Finnhub/Yahoo)
+            let twelveTicker = ticker;
+            if (ticker === '^GSPC') twelveTicker = 'SPX';
+            if (ticker === '^IXIC') twelveTicker = 'IXIC';
+            if (ticker === '^NDX') twelveTicker = 'NDX';
+            if (ticker === '^DJI') twelveTicker = 'DJI';
+
+            const candleRes = await fetch(`${TWELVEDATA_BASE}/time_series?symbol=${twelveTicker}&interval=${apiTf}&outputsize=${outputSize}&apikey=${TWELVEDATA_API_KEY}`);
             const cData = await candleRes.json();
             
             if (cData.status === "ok") {
@@ -1436,10 +1452,11 @@ async function loadChartData(ticker, tf) {
         renderTradingViewChart(candles);
         
         // Show AI Signal Card
-        const signals = calculateAISignals(ticker, candles);
-        const signalCard = document.getElementById('ai-signal-card');
-        if (signals) {
-            signalCard.style.display = 'block';
+        if (candles.length > 0) {
+            const signals = calculateAISignals(ticker, candles);
+            const signalCard = document.getElementById('ai-signal-card');
+            if (signals) {
+                signalCard.style.display = 'block';
             const sig = signals.signal;
             const trend = signals.trend;
             
@@ -1492,11 +1509,12 @@ async function loadChartData(ticker, tf) {
                 });
                 necklineSeries.setData(candles.map(c => ({ time: c.time, value: neckline })));
             }
-        } else {
-            signalCard.style.display = 'none';
         }
-        
-    } catch (err) {
+    } else {
+        const signalCard = document.getElementById('ai-signal-card');
+        if (signalCard) signalCard.style.display = 'none';
+    }
+} catch (err) {
         document.getElementById('detail-name').textContent = "Error fetching data";
         document.getElementById('ai-quick-summary').innerHTML = `Failed to fetch data for ${ticker}. ${err.message}`;
         console.error(err);
