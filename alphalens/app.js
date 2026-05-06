@@ -46,6 +46,11 @@ const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVEDATA_BASE = 'https://api.twelvedata.com';
 
+const CHART_UPDATE_DEBOUNCE_MS = 300;
+let currentStopLossLine = null;
+let currentTp1Line = null;
+let currentTp2Line = null;
+
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
     initAuth();
@@ -1031,28 +1036,45 @@ function calcATR(candles, period = 14) {
 
 function calculateAISignals(ticker, candles) {
     const portfolioItem = currentPortfolio.find(p => p.ticker === ticker);
-    const atr = calcATR(candles, 14);
+    
+    // Truncate context to last 200 candles for tactical signals to avoid historical bias
+    const recentCandles = candles.length > 200 ? candles.slice(-200) : candles;
+    const atr = calcATR(recentCandles, 14);
     const lastPrice = candles[candles.length - 1].close;
     
     if (!atr) return null;
 
-    const pips = findPIPs(candles);
-    const trend = analyzeTrend(pips);
-    const signal = generatePIPSignal(candles);
+    const pips = findPIPs(recentCandles);
+    const trend = analyzeTrend(pips, recentCandles);
+    const signal = generatePIPSignal(recentCandles);
 
     const entryPrice = portfolioItem ? portfolioItem.cost : lastPrice;
     const qty = portfolioItem ? portfolioItem.qty : 0;
     
-    // Stop Loss (PIP Trough or 2*ATR)
+    // Stop Loss (Tactical: Higher of Last PIP Trough or ATR-based stop from current price)
     const lastTrough = trend.troughs.length > 0 ? trend.troughs[trend.troughs.length-1].value : 0;
-    const stopLoss = lastTrough > 0 ? Math.min(lastTrough, entryPrice - (1.5 * atr)) : entryPrice - (2 * atr);
-    const riskPerShare = entryPrice - stopLoss;
     
-    // Targets
-    const tp1 = entryPrice + (2 * riskPerShare); // 1:2
-    const tp2 = entryPrice + (3 * riskPerShare); // 1:3
+    // Rule: SL should be below current price and adapt to trend
+    let stopLoss;
+    if (lastTrough > 0 && lastTrough < lastPrice) {
+        // Use trough if it's within a reasonable distance (not 50% away)
+        const troughDist = (lastPrice - lastTrough) / lastPrice;
+        if (troughDist < 0.15) {
+            stopLoss = lastTrough;
+        } else {
+            stopLoss = lastPrice - (2 * atr);
+        }
+    } else {
+        stopLoss = lastPrice - (2 * atr);
+    }
     
-    // Projected P/L
+    const riskPerShare = lastPrice - stopLoss;
+    
+    // Targets (Tactical: based on current price risk)
+    const tp1 = lastPrice + (2 * riskPerShare); // 1:2
+    const tp2 = lastPrice + (3 * riskPerShare); // 1:3
+    
+    // Projected P/L (Based on actual entry cost if in portfolio)
     const slImpact = qty * (stopLoss - entryPrice);
     const tp1Impact = qty * (tp1 - entryPrice);
     const tp2Impact = qty * (tp2 - entryPrice);
@@ -1498,6 +1520,34 @@ async function loadChartData(ticker, tf) {
                 </div>
             `;
 
+            if (signals && candlestickSeries) {
+                // Add new price lines
+                currentStopLossLine = candlestickSeries.createPriceLine({
+                    price: parseFloat(signals.stopLoss),
+                    color: '#EF4444',
+                    lineWidth: 2,
+                    lineStyle: 0, // Solid
+                    axisLabelVisible: true,
+                    title: 'STOP LOSS',
+                });
+                currentTp1Line = candlestickSeries.createPriceLine({
+                    price: parseFloat(signals.tp1),
+                    color: '#10B981',
+                    lineWidth: 2,
+                    lineStyle: 0, // Solid
+                    axisLabelVisible: true,
+                    title: 'TARGET 1',
+                });
+                currentTp2Line = candlestickSeries.createPriceLine({
+                    price: parseFloat(signals.tp2),
+                    color: '#10B981',
+                    lineWidth: 2,
+                    lineStyle: 1, // Dotted
+                    axisLabelVisible: true,
+                    title: 'TARGET 2',
+                });
+            }
+
             // Annotate Chart with Neckline if in consolidation
             if (trend.status === 'CONSOLIDATION' && trend.peaks.length > 0) {
                 const neckline = trend.peaks[trend.peaks.length - 1].value;
@@ -1533,6 +1583,10 @@ function renderTradingViewChart(data) {
     // Destroy old RSI chart
     if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
     document.getElementById('rsiChart').style.display = 'none';
+    
+    currentStopLossLine = null;
+    currentTp1Line = null;
+    currentTp2Line = null;
 
     const chartContainer = document.getElementById('stockChart');
     chartContainer.innerHTML = '';
@@ -1611,9 +1665,10 @@ function renderTradingViewChart(data) {
     // Enable volume by default
     toggleVolume(true);
 
-    // Initial PIP markers to ensure they show up immediately
+    // Initial PIP markers to ensure they show up immediately for the default 60-bar view
     try {
-        const initialPips = findPIPs(data);
+        const initialRange = data.slice(-60);
+        const initialPips = findPIPs(initialRange);
         pipSeries.setData(initialPips);
         const initialMarkers = initialPips.map((p, idx) => {
             let isHigh;
@@ -1822,7 +1877,13 @@ function toggleRSI(active, period = 14) {
         rsiContainer.style.display = 'none';
         return;
     }
+    
     if (currentChartData.length < period + 1) return;
+    
+    // Cleanup old instances to prevent duplication
+    if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
+    rsiContainer.innerHTML = '';
+    
     rsiContainer.style.display = 'block';
     rsiChart = createChart(rsiContainer, {
         layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF', fontSize: 10 },
