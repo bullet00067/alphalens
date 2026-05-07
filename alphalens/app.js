@@ -46,7 +46,8 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const TWELVEDATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
 
 // API Bases
-const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data';
+const FINMIND_BASE = '/finmind/api/v4/data';
+const TWSE_BASE = '/twse/exchangeReport/STOCK_DAY';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVEDATA_BASE = 'https://api.twelvedata.com';
 
@@ -220,15 +221,32 @@ function cleanTwTicker(ticker) {
 
 async function getQuickQuote(ticker) {
     if (isTaiwanStock(ticker)) {
-        const cleanTicker = cleanTwTicker(ticker);
-        const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${cleanTicker}&start_date=${new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0]}`);
-        const data = await res.json();
-        if (data.data && data.data.length > 0) {
-            const latest = data.data[data.data.length - 1];
-            return { price: latest.close, change: latest.spread, d: (latest.spread / (latest.close - latest.spread)) * 100 };
+        try {
+            const cleanTicker = cleanTwTicker(ticker);
+            const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${cleanTicker}&start_date=${new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0]}`);
+            
+            if (res.status === 402 || res.status === 429) {
+                const fallback = await fetchTwseFallbackCandles(ticker);
+                return { price: fallback.quote.c, change: fallback.quote.d, d: fallback.quote.dp };
+            }
+            
+            if (!res.ok) return { price: 0, change: 0, d: 0, error: `HTTP ${res.status}` };
+            const data = await res.json();
+            if (data.data && data.data.length > 0) {
+                const latest = data.data[data.data.length - 1];
+                return { price: latest.close, change: latest.spread, d: (latest.spread / (latest.close - latest.spread)) * 100 };
+            }
+            // If data is empty, try fallback
+            const fallback = await fetchTwseFallbackCandles(ticker);
+            return { price: fallback.quote.c, change: fallback.quote.d, d: fallback.quote.dp };
+        } catch (e) {
+            const fallback = await fetchTwseFallbackCandles(ticker).catch(() => null);
+            if (fallback) return { price: fallback.quote.c, change: fallback.quote.d, d: fallback.quote.dp };
+            return { price: 0, change: 0, d: 0, error: e.message };
         }
     } else {
         const res = await fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`);
+        if (!res.ok) return { price: 0, change: 0, d: 0, error: `HTTP ${res.status}` };
         const data = await res.json();
         return { price: data.c, change: data.d, d: data.dp };
     }
@@ -703,6 +721,7 @@ async function getTaiwanStockName(ticker) {
     if (twStockNames[ticker]) return twStockNames[ticker];
     try {
         const response = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${ticker}`);
+        if (!response.ok) return null;
         const data = await response.json();
         if (data && data.data && data.data.length > 0) {
             twStockNames[ticker] = data.data[0].stock_name;
@@ -1249,48 +1268,112 @@ function setupSearch() {
     });
 }
 
-async function fetchTwseCandles(ticker, tf) {
-    if (tf === '15min' || tf === '1h') {
-        showToast("FinMind 免費版僅支援日線以上週期 (Day/Week/Month/Year)");
-        tf = '1day'; // Fallback
-    }
-
+async function fetchTwseFallbackCandles(ticker) {
     const twTicker = cleanTwTicker(ticker);
-    const end = new Date();
-    const start = new Date();
-    start.setFullYear(end.getFullYear() - 10); // 10 years of data
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+    // Using TWSE STOCK_DAY API via proxy
+    const url = `/twse/exchangeReport/STOCK_DAY?response=json&date=${dateStr}&stockNo=${twTicker}`;
     
-    const formatDt = (d) => d.toISOString().split('T')[0];
-    const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`);
-    const data = await res.json();
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`TWSE Fetch failed: ${res.status}`);
+    const json = await res.json();
     
-    if(!data.data || data.data.length === 0) throw new Error("No data");
+    if (!json.data || json.data.length === 0) throw new Error("No data from TWSE");
     
-    const latest = data.data[data.data.length - 1];
-    const quote = {
-        c: latest.close,
-        d: latest.spread,
-        dp: (latest.spread / (latest.close - latest.spread)) * 100,
-        h: latest.max,
-        l: latest.min,
-        pc: latest.close - latest.spread
-    };
-    
-    let candles = data.data.map(d => ({
-        time: Math.floor(new Date(d.date).getTime() / 1000),
-        open: d.open,
-        high: d.max,
-        low: d.min,
-        close: d.close,
-        volume: d.Trading_Volume || d.trading_volume || 0
-    }));
+    const candles = json.data.map(row => {
+        try {
+            const dateParts = row[0].split('/');
+            if (dateParts.length < 3) return null;
+            const year = parseInt(dateParts[0]) + 1911;
+            const month = dateParts[1];
+            const day = dateParts[2];
+            const time = `${year}-${month}-${day}`;
+            
+            const parseVal = (val) => {
+                if (!val || val === '--') return null;
+                const num = parseFloat(val.replace(/,/g, ''));
+                return isNaN(num) ? null : num;
+            };
 
-    if (tf !== '1day') {
-        candles = aggregateCandles(candles, tf);
+            const open = parseVal(row[3]);
+            const high = parseVal(row[4]);
+            const low = parseVal(row[5]);
+            const close = parseVal(row[6]);
+            const volume = parseVal(row[1]) || 0;
+
+            if (open === null || high === null || low === null || close === null) return null;
+
+            return { time, open, high, low, close, volume };
+        } catch (e) {
+            return null;
+        }
+    }).filter(c => c !== null);
+
+    if (candles.length === 0) throw new Error("No valid data points found in TWSE response");
+
+    const latest = candles[candles.length - 1];
+    return {
+        quote: { 
+            c: latest.close, 
+            d: 0, 
+            dp: 0, 
+            h: latest.high, 
+            l: latest.low, 
+            pc: candles[candles.length-2]?.close || latest.open 
+        },
+        candles,
+        profile: { name: json.title ? json.title.split(' ')[2] : ticker }
+    };
+}
+
+async function fetchTwseCandles(ticker, tf) {
+    try {
+        const twTicker = cleanTwTicker(ticker);
+        const end = new Date();
+        const start = new Date();
+        start.setFullYear(end.getFullYear() - 1);
+        
+        const formatDt = (d) => d.toISOString().split('T')[0];
+        const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`);
+        
+        if (res.status === 402 || res.status === 429) {
+            console.warn(`FinMind limit hit, switching to TWSE fallback...`);
+            return await fetchTwseFallbackCandles(ticker);
+        }
+        
+        if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
+        const data = await res.json();
+        
+        if(!data.data || data.data.length === 0) {
+            return await fetchTwseFallbackCandles(ticker);
+        }
+        
+        const candles = data.data.map(d => ({
+            time: d.date,
+            open: d.open,
+            high: d.max,
+            low: d.min,
+            close: d.close,
+            volume: d.Trading_Volume
+        }));
+
+        const name = await getTaiwanStockName(twTicker) || ticker;
+        const latest = candles[candles.length - 1];
+        const quote = { 
+            c: latest.close, 
+            d: 0, 
+            dp: 0, 
+            h: latest.high, 
+            l: latest.low, 
+            pc: candles[candles.length-2]?.close || latest.open 
+        };
+
+        return { quote, candles, profile: { name } };
+    } catch (e) {
+        console.error("FinMind Error, trying TWSE fallback:", e);
+        return await fetchTwseFallbackCandles(ticker);
     }
-    
-    const name = await getTaiwanStockName(twTicker);
-    return { quote, candles, profile: { name: name ? `${twTicker} ${name}` : `TWSE: ${twTicker}` } };
 }
 
 async function fetchUSCandles(ticker, finnhubKey, tf) {
@@ -1299,6 +1382,13 @@ async function fetchUSCandles(ticker, finnhubKey, tf) {
         fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}&token=${finnhubKey}`),
         fetch(`${FINNHUB_BASE}/stock/profile2?symbol=${ticker}&token=${finnhubKey}`)
     ]);
+
+    if (quoteRes.status === 429 || profileRes.status === 429) {
+        throw new Error("Fetch failed with status 429");
+    }
+    if (!quoteRes.ok || !profileRes.ok) {
+        throw new Error(`Fetch failed with status ${quoteRes.status || profileRes.status}`);
+    }
 
     const quote = await quoteRes.json();
     const profile = await profileRes.json();
@@ -1655,10 +1745,21 @@ async function loadChartData(ticker, tf) {
         const signalCard = document.getElementById('ai-signal-card');
         if (signalCard) signalCard.style.display = 'none';
     }
-} catch (err) {
-        document.getElementById('detail-name').textContent = "Error fetching data";
-        document.getElementById('ai-quick-summary').innerHTML = `Failed to fetch data for ${ticker}. ${err.message}`;
-        console.error(err);
+    } catch (err) {
+        const isQuotaError = err.message.includes('402') || (err instanceof Response && err.status === 402);
+        const isRateLimitError = err.message.includes('429') || (err instanceof Response && err.status === 429);
+        
+        document.getElementById('detail-name').textContent = isQuotaError ? "API Quota Exceeded" : (isRateLimitError ? "Rate Limit Exceeded" : "Error fetching data");
+        
+        if (isQuotaError) {
+            document.getElementById('ai-quick-summary').innerHTML = `<div class="error-msg"><i class="fa-solid fa-circle-exclamation"></i> FinMind API 額度已達上限 (402)。請稍後再試或檢查 API 權限。</div>`;
+        } else if (isRateLimitError) {
+            document.getElementById('ai-quick-summary').innerHTML = `<div class="error-msg"><i class="fa-solid fa-clock"></i> Finnhub API 頻率限制 (429)。請稍等 1 分鐘後再重新整理。</div>`;
+        } else {
+            document.getElementById('ai-quick-summary').innerHTML = `Failed to fetch data for ${ticker}. ${err.message}`;
+        }
+        
+        console.error("Fetch Error:", err);
         if(currentStockChart) { currentStockChart.remove(); currentStockChart = null; }
     }
 }
