@@ -1,4 +1,4 @@
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
 import { generatePIPSignal, findPIPs, analyzeTrend } from './strategyEngine.js';
 
 import { initializeApp } from "firebase/app";
@@ -1492,7 +1492,7 @@ async function loadChartData(ticker, tf) {
                 crosshair: { mode: CrosshairMode.Normal }
             });
 
-            pipLineSeries = pipChartInstance.addLineSeries({
+            pipLineSeries = pipChartInstance.addSeries(LineSeries, {
                 color: '#eab308',
                 lineWidth: 2,
                 priceLineVisible: false,
@@ -1700,7 +1700,7 @@ function renderTradingViewChart(data) {
     candlestickSeries.setData(data);
     
     // Add Markers Plugin
-    candlestickSeries.setMarkers([]);
+    createSeriesMarkers(candlestickSeries, []);
     
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
@@ -1747,7 +1747,7 @@ function renderTradingViewChart(data) {
                         };
                     });
                     currentPipMarkers = markers;
-                    candlestickSeries.setMarkers(markers);
+                    createSeriesMarkers(candlestickSeries, markers);
                 }
             } catch (e) {
                 console.error("ERROR IN PIP MARKERS:", e);
@@ -1782,7 +1782,7 @@ function renderTradingViewChart(data) {
             };
         });
         currentPipMarkers = initialMarkers;
-        candlestickSeries.setMarkers(initialMarkers);
+        createSeriesMarkers(candlestickSeries, initialMarkers);
     } catch (e) {
         console.error("Initial PIP markers failed:", e);
     }
@@ -1796,7 +1796,7 @@ function renderTradingViewChart(data) {
                     delete newM.text;
                     return newM;
                 });
-                candlestickSeries.setMarkers(cleaned);
+                createSeriesMarkers(candlestickSeries, cleaned);
             }
             return;
         }
@@ -1817,7 +1817,7 @@ function renderTradingViewChart(data) {
                             return newM;
                         }
                     });
-                    candlestickSeries.setMarkers(updated);
+                    createSeriesMarkers(candlestickSeries, updated);
                 }
             }
         } else {
@@ -1827,7 +1827,7 @@ function renderTradingViewChart(data) {
                     delete newM.text;
                     return newM;
                 });
-                candlestickSeries.setMarkers(cleaned);
+                createSeriesMarkers(candlestickSeries, cleaned);
             }
         }
     });
