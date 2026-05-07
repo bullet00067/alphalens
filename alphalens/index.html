@@ -267,16 +267,20 @@
                                     <button class="indicator-btn" data-type="boll" data-period="20">BOLL</button>
                                     <button class="indicator-btn" data-type="vol">VOL</button>
                                     <button class="indicator-btn" data-type="rsi" data-period="14">RSI</button>
+                                    <button class="indicator-btn" data-type="pip-tactical"><i class="fa-solid fa-crosshairs"></i> TACTICAL</button>
                                 </div>
                                 <button class="ghost-btn-danger" id="clear-indicators-btn" style="margin-left: auto; font-size: 13px;" aria-label="Clear all indicators">Clear All</button>
                             </div>
                         </div>
-                        <div id="stockChart" style="position: relative; width: 100%; min-height: 480px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px; border: 1px solid var(--border-glass);">
-                            <div id="chart-tooltip" style="display: none; position: absolute; top: 12px; left: 16px; z-index: 10; pointer-events: none; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); border: 1px solid var(--border-glass); border-radius: 8px; padding: 12px; font-size: 13px; color: var(--text-primary); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); min-width: 180px;">
+                        <div id="stockChart" class="main-stock-chart">
+                            <div id="chart-tooltip" class="chart-tooltip">
                                 <!-- Tooltip content populated by JS -->
                             </div>
                         </div>
-                        <div id="rsiChart" style="width: 100%; min-height: 120px; display: none; margin-top: 8px; border-top: 1px solid var(--border-glass); padding-top: 8px;"></div>
+                        <div id="rsiChart" class="indicator-chart-container rsi-container"></div>
+                        <div id="pipChart" class="indicator-chart-container pip-container">
+                            <div id="pip-pattern-label" class="pip-pattern-tag"></div>
+                        </div>
                     </div>
                     
                     <div class="sidebar-column" style="display: flex; flex-direction: column; gap: 24px;">

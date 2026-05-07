@@ -7,6 +7,7 @@ const PIP_MAX_ITERATIONS = 150;
 
 // Memoization cache for PIP calculations
 const pipCache = new Map();
+const patternCache = new Map();
 
 /**
  * Calculate Standard Deviation of an array
@@ -51,6 +52,21 @@ export function calcVerticalDistance(startX, startY, endX, endY, candX, candY) {
     if (endX === startX) return 0;
     const vd = (((candX - startX) / (endX - startX)) * (endY - startY) + startY) - candY;
     return Math.abs(vd);
+}
+
+/**
+ * Calculate slope between two points
+ */
+export function calculateSlope(p1, p2) {
+    if (p2.index === p1.index) return 0;
+    return (p2.value - p1.value) / (p2.index - p1.index);
+}
+
+/**
+ * Check if two slopes are approximately parallel within a threshold
+ */
+export function isParallel(slope1, slope2, threshold = 0.05) {
+    return Math.abs(slope1 - slope2) < threshold;
 }
 
 /**
@@ -280,6 +296,118 @@ function calculateMA(candles, period) {
 }
 
 /**
+ * PatternRecognitionModule: Identify geometric patterns from PIPs
+ */
+export function identifyPatterns(pips, useCache = true) {
+    if (pips.length < 5) return [];
+    
+    const cacheKey = pips.map(p => `${p.time}-${p.value.toFixed(4)}`).join('|');
+    if (useCache && patternCache.has(cacheKey)) {
+        return patternCache.get(cacheKey);
+    }
+    
+    const peaks = [];
+    const troughs = [];
+    for (let i = 1; i < pips.length - 1; i++) {
+        if (pips[i].value > pips[i-1].value && pips[i].value > pips[i+1].value) peaks.push(pips[i]);
+        if (pips[i].value < pips[i-1].value && pips[i].value < pips[i+1].value) troughs.push(pips[i]);
+    }
+
+    const patterns = [];
+    
+    // 1. Check for Triangles
+    const triangle = checkTriangle(peaks, troughs);
+    if (triangle) patterns.push(triangle);
+
+    // 2. Check for Double Patterns (M/W)
+    const doublePattern = checkDoublePattern(peaks, troughs);
+    if (doublePattern) patterns.push(doublePattern);
+
+    if (useCache) {
+        patternCache.set(cacheKey, patterns);
+    }
+    return patterns;
+}
+
+/**
+ * Logic for Triangle patterns
+ */
+function checkTriangle(peaks, troughs) {
+    if (peaks.length < 2 || troughs.length < 2) return null;
+    
+    const p1 = peaks[peaks.length - 2];
+    const p2 = peaks[peaks.length - 1];
+    const t1 = troughs[troughs.length - 2];
+    const t2 = troughs[troughs.length - 1];
+    
+    const sUpper = calculateSlope(p1, p2);
+    const sLower = calculateSlope(t1, t2);
+    
+    // Normalize slopes by price level for better comparison
+    const normUpper = sUpper / p1.value;
+    const normLower = sLower / t1.value;
+    const tol = 0.0005; // 0.05% per bar tolerance
+
+    // Ascending Triangle: Flat top, rising bottom
+    if (Math.abs(normUpper) < tol && normLower > tol) {
+        const height = p1.value - t1.value;
+        return { type: 'ASCENDING_TRIANGLE', name: '上升三角', color: '#22c55e', points: [p1, p2, t1, t2], height };
+    }
+    
+    // Descending Triangle: Falling top, flat bottom
+    if (normUpper < -tol && Math.abs(normLower) < tol) {
+        const height = p1.value - t1.value;
+        return { type: 'DESCENDING_TRIANGLE', name: '下降三角', color: '#ef4444', points: [p1, p2, t1, t2], height };
+    }
+    
+    // Symmetrical Triangle: Falling top, rising bottom
+    if (normUpper < -tol && normLower > tol) {
+        const height = p1.value - t1.value;
+        return { type: 'SYMMETRICAL_TRIANGLE', name: '對稱三角', color: '#eab308', points: [p1, p2, t1, t2], height };
+    }
+    
+    return null;
+}
+
+/**
+ * Logic for Double Top/Bottom (M/W)
+ */
+function checkDoublePattern(peaks, troughs) {
+    const tol = 0.015; // 1.5% price difference tolerance
+    
+    // Double Bottom (W)
+    if (troughs.length >= 2) {
+        const t1 = troughs[troughs.length - 2];
+        const t2 = troughs[troughs.length - 1];
+        const diff = Math.abs(t1.value - t2.value) / ((t1.value + t2.value) / 2);
+        
+        if (diff < tol) {
+            // Height is from trough to the peak between them
+            const relevantPips = peaks.filter(p => p.index > t1.index && p.index < t2.index);
+            const midPeak = relevantPips.length > 0 ? Math.max(...relevantPips.map(p => p.value)) : t1.value * 1.05;
+            const height = midPeak - ((t1.value + t2.value) / 2);
+            return { type: 'DOUBLE_BOTTOM', name: 'W底 (雙重底)', color: '#22c55e', points: [t1, t2], height, neckline: midPeak };
+        }
+    }
+    
+    // Double Top (M)
+    if (peaks.length >= 2) {
+        const p1 = peaks[peaks.length - 2];
+        const p2 = peaks[peaks.length - 1];
+        const diff = Math.abs(p1.value - p2.value) / ((p1.value + p2.value) / 2);
+        
+        if (diff < tol) {
+            const relevantTroughs = troughs.filter(t => t.index > p1.index && t.index < p2.index);
+            const midTrough = relevantTroughs.length > 0 ? Math.min(...relevantTroughs.map(t => t.value)) : p1.value * 0.95;
+            const height = ((p1.value + p2.value) / 2) - midTrough;
+            return { type: 'DOUBLE_TOP', name: 'M頭 (雙重頂)', color: '#ef4444', points: [p1, p2], height, neckline: midTrough };
+        }
+    }
+    
+    return null;
+}
+
+/**
  * Main Signal Generator
  */
 export function generatePIPSignal(candles) {
@@ -289,22 +417,57 @@ export function generatePIPSignal(candles) {
 
     const pips = findPIPs(candles);
     const trend = analyzeTrend(pips, candles);
+    const patterns = identifyPatterns(pips);
     const entry = evaluateEntry(candles, pips, trend);
     
+    let confidence = trend.confidence;
+    let patternText = '';
+    if (patterns.length > 0) {
+        confidence = Math.min(1.0, confidence + 0.15);
+        patternText = ` (${patterns[0].name})`;
+        
+        const p = patterns[0];
+        const last = candles[candles.length - 1];
+        const prev = candles[candles.length - 2];
+        
+        // 1. Triangle Breakout
+        if (p.type.includes('TRIANGLE')) {
+            const p1 = p.points[0]; const p2 = p.points[1];
+            const t1 = p.points[2]; const t2 = p.points[3];
+            const upperVal = p1.value + calculateSlope(p1, p2) * (candles.length - 1 - p1.index);
+            const lowerVal = t1.value + calculateSlope(t1, t2) * (candles.length - 1 - t1.index);
+            
+            if (last.close > upperVal && prev.close <= upperVal) {
+                return { signal: 'BUY', text: `🚀 向上突破${p.name}`, color: '#22c55e', details: { reason: 'BREAKOUT_UP', patterns }, confidence: 0.9 };
+            }
+            if (last.close < lowerVal && prev.close >= lowerVal) {
+                return { signal: 'SELL', text: `⚠️ 向下跌破${p.name}`, color: '#ef4444', details: { reason: 'BREAKOUT_DOWN', patterns }, confidence: 0.9 };
+            }
+        }
+        
+        // 2. Double Pattern Breakout
+        if (p.type === 'DOUBLE_BOTTOM' && last.close > p.neckline && prev.close <= p.neckline) {
+            return { signal: 'BUY', text: `🚀 W底頸線突破`, color: '#22c55e', details: { reason: 'W_BREAKOUT', patterns }, confidence: 0.9 };
+        }
+        if (p.type === 'DOUBLE_TOP' && last.close < p.neckline && prev.close >= p.neckline) {
+            return { signal: 'SELL', text: `⚠️ M頭頸線跌破`, color: '#ef4444', details: { reason: 'M_BREAKOUT', patterns }, confidence: 0.9 };
+        }
+    }
+
     if (entry) {
         return { 
             signal: 'BUY', 
-            text: `🟢 ${entry.reason}`, 
+            text: `🟢 ${entry.reason}${patternText}`, 
             color: '#22c55e', 
-            details: entry,
-            confidence: trend.confidence 
+            details: { ...entry, patterns },
+            confidence: confidence 
         };
     }
 
     // Default trend-based status
-    if (trend.status === 'BULLISH') return { signal: 'HOLD', text: '🔵 多頭持股', color: '#3b82f6', confidence: trend.confidence };
-    if (trend.status === 'BEARISH') return { signal: 'NEUTRAL', text: '🔴 空頭勢頭', color: '#ef4444', confidence: trend.confidence };
-    if (trend.status === 'CONSOLIDATION') return { signal: 'NEUTRAL', text: '🟡 區間盤整', color: '#eab308', confidence: trend.confidence };
+    if (trend.status === 'BULLISH') return { signal: 'HOLD', text: `🔵 多頭持股${patternText}`, color: '#3b82f6', confidence: confidence, patterns };
+    if (trend.status === 'BEARISH') return { signal: 'NEUTRAL', text: `🔴 空頭勢頭${patternText}`, color: '#ef4444', confidence: confidence, patterns };
+    if (trend.status === 'CONSOLIDATION') return { signal: 'NEUTRAL', text: `🟡 區間盤整${patternText}`, color: '#eab308', confidence: confidence, patterns };
     
-    return { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', confidence: 0 };
+    return { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', confidence: 0, patterns };
 }

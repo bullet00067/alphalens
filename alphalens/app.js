@@ -1,4 +1,4 @@
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 import { generatePIPSignal, findPIPs, analyzeTrend } from './strategyEngine.js';
 
 import { initializeApp } from "firebase/app";
@@ -27,7 +27,6 @@ let currentStockChart = null;
 let candlestickSeries = null;
 let volumeSeries = null;
 let pipSeries = null;
-let pipMarkersPlugin = null;
 let smaSeriesList = [];
 let currentChartData = []; // Store OHLC data for indicator calculation
 let currentTimeframe = '1day';
@@ -35,6 +34,11 @@ let currentTicker = null;
 let currentPortfolio = []; // Will be loaded from Firebase
 let currentMarketTab = 'ALL'; // 'ALL', 'US', 'TW'
 const twStockNames = {}; // Cache for Taiwan stock names
+let pipChartInstance = null;
+let pipLineSeries = null;
+let isPipTacticalEnabled = false;
+let patternUpperSeries = null;
+let patternLowerSeries = null;
 
 // API Keys (from .env via Vite)
 const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
@@ -635,10 +639,6 @@ async function updateObservationRow(ticker) {
         updateTacticalCache(ticker, trend, signal);
     }
 }
-
-// Tactical Cache for AI Assistant
-let tacticalCache = {};
-let lastCacheUpdate = 0;
 
 function updateTacticalCache(ticker, trend, signal) {
     tacticalCache[ticker] = {
@@ -1472,6 +1472,59 @@ async function loadChartData(ticker, tf) {
         `;
         
         renderTradingViewChart(candles);
+
+        // Tactical Chart Logic
+        if (isPipTacticalEnabled) {
+            const pipContainer = document.getElementById('pipChart');
+            const patternLabel = document.getElementById('pip-pattern-label');
+            
+            if (pipChartInstance) {
+                pipChartInstance.remove();
+            }
+
+            pipChartInstance = createChart(pipContainer, {
+                width: pipContainer.clientWidth,
+                height: 180,
+                layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
+                grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+                timeScale: { visible: false, borderVisible: false },
+                rightPriceScale: { borderVisible: false },
+                crosshair: { mode: CrosshairMode.Normal }
+            });
+
+            pipLineSeries = pipChartInstance.addLineSeries({
+                color: '#eab308',
+                lineWidth: 2,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: true
+            });
+
+            const pips = findPIPs(candles);
+            pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.value })));
+            
+            // Sync Time Scale
+            if (currentStockChart && currentStockChart.timeScale()) {
+                currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                    if (range && pipChartInstance) {
+                        pipChartInstance.timeScale().setVisibleLogicalRange(range);
+                    }
+                });
+            }
+
+            const signal = generatePIPSignal(candles);
+            // Update Pattern Label
+            if (signal.patterns && signal.patterns.length > 0) {
+                const p = signal.patterns[0];
+                patternLabel.textContent = `PATTERN: ${p.name}`;
+                patternLabel.style.display = 'block';
+                patternLabel.style.background = `${p.color}33`; // 20% opacity hex
+                patternLabel.style.color = p.color;
+                patternLabel.style.borderColor = `${p.color}4d`; // 30% opacity hex
+            } else {
+                patternLabel.style.display = 'none';
+            }
+        }
         
         // Show AI Signal Card
         if (candles.length > 0) {
@@ -1483,15 +1536,15 @@ async function loadChartData(ticker, tf) {
             const trend = signals.trend;
             
             signalCard.innerHTML = `
-                <div class="glass-panel" style="padding: 16px; margin-top: 20px; border-left: 4px solid ${sig.color};">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h3 style="display: flex; align-items: center; gap: 8px; margin: 0;">
-                            <i class="fa-solid fa-robot" style="color: var(--accent-primary);"></i> AI Strategy: <span style="color: ${sig.color}">${sig.text}</span>
+                <div class="glass-panel strategy-card" style="border-left: 4px solid ${sig.color};">
+                    <div class="strategy-header">
+                        <h3 class="strategy-title">
+                            <i class="fa-solid fa-robot"></i> AI Strategy: <span style="color: ${sig.color}">${sig.text}</span>
                         </h3>
-                        <span class="badge" style="background: rgba(255,255,255,0.05);">${trend.status}</span>
+                        <span class="badge strategy-badge">${trend.status}</span>
                     </div>
                     
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                    <div class="strategy-grid">
                         <div class="stat-item">
                             <span class="stat-label">Stop Loss (PIP/ATR)</span>
                             <span class="stat-value negative">$${signals.stopLoss}</span>
@@ -1510,8 +1563,8 @@ async function loadChartData(ticker, tf) {
                         </div>
                     </div>
 
-                    <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                        <strong><i class="fa-solid fa-circle-info" style="color: var(--accent-primary);"></i> Analysis:</strong><br>
+                    <div class="strategy-analysis">
+                        <strong><i class="fa-solid fa-circle-info"></i> Analysis:</strong><br>
                         PIP trend is ${trend.status.toLowerCase()}. 
                         ${trend.status === 'BULLISH' ? 'Strong higher-peaks/higher-troughs structure detected.' : ''}
                         ${trend.status === 'CONSOLIDATION' ? 'Price is oscillating within a tight range (neckline identification active).' : ''}
@@ -1548,16 +1601,54 @@ async function loadChartData(ticker, tf) {
                 });
             }
 
-            // Annotate Chart with Neckline if in consolidation
-            if (trend.status === 'CONSOLIDATION' && trend.peaks.length > 0) {
-                const neckline = trend.peaks[trend.peaks.length - 1].value;
-                const necklineSeries = currentStockChart.addSeries(LineSeries, {
-                    color: 'rgba(239, 68, 68, 0.4)',
-                    lineWidth: 1,
-                    lineStyle: 2,
-                    title: 'Neckline'
-                });
-                necklineSeries.setData(candles.map(c => ({ time: c.time, value: neckline })));
+            // Draw Pattern Boundaries if detected
+            if (sig.details && sig.details.patterns && sig.details.patterns.length > 0) {
+                const p = sig.details.patterns[0];
+                const pts = p.points;
+                
+                if (pts.length >= 2) {
+                    const upperPts = p.type.includes('TRIANGLE') ? pts.slice(0, 2) : (p.type === 'DOUBLE_TOP' ? pts : []);
+                    const lowerPts = p.type.includes('TRIANGLE') ? pts.slice(2, 4) : (p.type === 'DOUBLE_BOTTOM' ? pts : []);
+
+                    if (upperPts.length >= 2) {
+                        patternUpperSeries = currentStockChart.addSeries(LineSeries, {
+                            color: p.color,
+                            lineWidth: 2,
+                            lineStyle: 0,
+                            title: p.name + ' Top'
+                        });
+                        // Interpolate points between start and end index
+                        const start = Math.min(...upperPts.map(pt => pt.index));
+                        const end = Math.max(...upperPts.map(pt => pt.index));
+                        const sVal = upperPts.find(pt => pt.index === start).value;
+                        const eVal = upperPts.find(pt => pt.index === end).value;
+                        
+                        const lineData = candles.filter((_, i) => i >= start && i <= end).map((c, i, arr) => {
+                            const ratio = i / (arr.length - 1);
+                            return { time: c.time, value: sVal + ratio * (eVal - sVal) };
+                        });
+                        patternUpperSeries.setData(lineData);
+                    }
+
+                    if (lowerPts.length >= 2) {
+                        patternLowerSeries = currentStockChart.addSeries(LineSeries, {
+                            color: p.color,
+                            lineWidth: 2,
+                            lineStyle: 0,
+                            title: p.name + ' Bottom'
+                        });
+                        const start = Math.min(...lowerPts.map(pt => pt.index));
+                        const end = Math.max(...lowerPts.map(pt => pt.index));
+                        const sVal = lowerPts.find(pt => pt.index === start).value;
+                        const eVal = lowerPts.find(pt => pt.index === end).value;
+                        
+                        const lineData = candles.filter((_, i) => i >= start && i <= end).map((c, i, arr) => {
+                            const ratio = i / (arr.length - 1);
+                            return { time: c.time, value: sVal + ratio * (eVal - sVal) };
+                        });
+                        patternLowerSeries.setData(lineData);
+                    }
+                }
             }
         }
     } else {
@@ -1587,6 +1678,8 @@ function renderTradingViewChart(data) {
     currentStopLossLine = null;
     currentTp1Line = null;
     currentTp2Line = null;
+    patternUpperSeries = null;
+    patternLowerSeries = null;
 
     const chartContainer = document.getElementById('stockChart');
     chartContainer.innerHTML = '';
@@ -1607,7 +1700,7 @@ function renderTradingViewChart(data) {
     candlestickSeries.setData(data);
     
     // Add Markers Plugin
-    pipMarkersPlugin = createSeriesMarkers(candlestickSeries, []);
+    candlestickSeries.setMarkers([]);
     
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
@@ -1654,7 +1747,7 @@ function renderTradingViewChart(data) {
                         };
                     });
                     currentPipMarkers = markers;
-                    pipMarkersPlugin.setMarkers(markers);
+                    candlestickSeries.setMarkers(markers);
                 }
             } catch (e) {
                 console.error("ERROR IN PIP MARKERS:", e);
@@ -1689,7 +1782,7 @@ function renderTradingViewChart(data) {
             };
         });
         currentPipMarkers = initialMarkers;
-        pipMarkersPlugin.setMarkers(initialMarkers);
+        candlestickSeries.setMarkers(initialMarkers);
     } catch (e) {
         console.error("Initial PIP markers failed:", e);
     }
@@ -1703,7 +1796,7 @@ function renderTradingViewChart(data) {
                     delete newM.text;
                     return newM;
                 });
-                pipMarkersPlugin.setMarkers(cleaned);
+                candlestickSeries.setMarkers(cleaned);
             }
             return;
         }
@@ -1724,7 +1817,7 @@ function renderTradingViewChart(data) {
                             return newM;
                         }
                     });
-                    pipMarkersPlugin.setMarkers(updated);
+                    candlestickSeries.setMarkers(updated);
                 }
             }
         } else {
@@ -1734,7 +1827,7 @@ function renderTradingViewChart(data) {
                     delete newM.text;
                     return newM;
                 });
-                pipMarkersPlugin.setMarkers(cleaned);
+                candlestickSeries.setMarkers(cleaned);
             }
         }
     });
@@ -1976,9 +2069,34 @@ function initIndicators() {
                 toggleVolume(!isActive);
             } else if (type === 'rsi') {
                 toggleRSI(!isActive, period);
+            } else if (type === 'pip-tactical') {
+                togglePipTactical();
             }
         });
     });
+}
+
+function togglePipTactical() {
+    isPipTacticalEnabled = !isPipTacticalEnabled;
+    const btn = document.querySelector('[data-type="pip-tactical"]');
+    const container = document.getElementById('pipChart');
+    
+    if (isPipTacticalEnabled) {
+        btn.classList.add('active');
+        container.style.display = 'block';
+    } else {
+        btn.classList.remove('active');
+        container.style.display = 'none';
+        if (pipChartInstance) {
+            pipChartInstance.remove();
+            pipChartInstance = null;
+            pipLineSeries = null;
+        }
+    }
+    
+    // Force re-render to initialize or update the tactical chart
+    const ticker = document.getElementById('detail-ticker').textContent;
+    if (ticker) loadStockDetail(ticker);
 }
 
 function initTimeframeSwitcher() {

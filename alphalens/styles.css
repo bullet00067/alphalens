@@ -87,6 +87,37 @@ body {
     color: white;
 }
 
+.indicator-btn {
+    background: transparent;
+    border: 1px solid var(--border-glass);
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.indicator-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.indicator-btn.active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+}
+
+.indicator-btn i {
+    font-size: 0.9em;
+}
+
 
 .secondary-btn {
     background: transparent;
@@ -647,6 +678,78 @@ tbody tr:hover {
     }
 }
 
+.main-stock-chart {
+    position: relative;
+    width: 100%;
+    min-height: 480px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 12px;
+    padding: 4px;
+    border: 1px solid var(--border-glass);
+    transition: min-height 0.3s ease;
+}
+
+@media (max-width: 768px) {
+    .main-stock-chart {
+        min-height: 320px;
+    }
+}
+
+.chart-tooltip {
+    display: none;
+    position: absolute;
+    top: 12px;
+    left: 16px;
+    z-index: 10;
+    pointer-events: none;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    min-width: 180px;
+}
+
+.indicator-chart-container {
+    width: 100%;
+    display: none;
+    margin-top: 8px;
+    border-top: 1px solid var(--border-glass);
+    padding-top: 8px;
+    position: relative;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.1);
+}
+
+.rsi-container { min-height: 120px; }
+.pip-container { min-height: 180px; }
+
+@media (max-width: 768px) {
+    .pip-container { min-height: 150px; }
+}
+
+.pip-pattern-tag {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 5;
+    background: rgba(34, 197, 94, 0.15);
+    backdrop-filter: blur(4px);
+    color: #4ade80;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    display: none;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
 .chart-container {
     position: relative;
     width: 100%;
@@ -1185,6 +1288,15 @@ tbody tr:hover {
         align-items: center;
         justify-content: space-between;
     }
+    
+    .indicator-btn {
+        padding: 6px 12px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-glass);
+        color: var(--text-main);
+        cursor: pointer;
+    }
 
     .table-responsive td[data-label="Ticker"]:before {
         display: none !important;
@@ -1275,5 +1387,78 @@ tbody tr:hover {
     
     #portfolio-table-body td[colspan]:before {
         display: none !important;
+    }
+}
+
+/* Strategy Card & AI Signals */
+.strategy-card {
+    padding: 20px;
+    margin-top: 24px;
+    border-radius: 16px;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.strategy-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.strategy-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.strategy-title i {
+    color: var(--accent-primary);
+}
+
+.strategy-badge {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent-primary);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.strategy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.strategy-analysis {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid var(--border-glass);
+}
+
+.strategy-analysis i {
+    color: var(--accent-primary);
+}
+
+@media (max-width: 600px) {
+    .strategy-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    .strategy-header {
+        flex-direction: column;
+        align-items: flex-start;
     }
 }
