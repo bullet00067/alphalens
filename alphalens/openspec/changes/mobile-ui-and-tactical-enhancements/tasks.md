@@ -18,3 +18,9 @@
 - [x] **Verification**
   - [x] Regression test US/TW stocks.
   - [x] Mobile UX validation (no horizontal scrolling).
+
+- [x] **Production Deployment (Render)**
+  - [x] Identify CORS issues on static site deployment.
+  - [x] Implement `fetchWithProxy` using `corsproxy.io` for production data fetching.
+  - [x] Parallelize data requests using `Promise.all` to reduce latency.
+  - [x] Implement in-memory caching for API responses.
