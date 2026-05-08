@@ -408,11 +408,52 @@ function checkDoublePattern(peaks, troughs) {
 }
 
 /**
+ * Calculate Bullish/Bearish Probability based on multiple indicators
+ */
+export function calculateProbability(signal, trend, candles) {
+    if (!candles || candles.length < 20) return { bullish: 50, bearish: 50 };
+
+    let score = 50; // Base score (Neutral)
+
+    // 1. Trend Impact (30%)
+    if (trend.status === 'BULLISH') score += 15;
+    if (trend.status === 'BEARISH') score -= 15;
+    if (trend.status === 'CONSOLIDATION') score += 5;
+
+    // 2. Signal Impact (30%)
+    if (signal.signal === 'BUY') score += 20;
+    if (signal.signal === 'SELL') score -= 20;
+
+    // 3. Technical Context (20%)
+    const last = candles[candles.length - 1];
+    const ma20 = calculateMA(candles, 20);
+    const ma60 = calculateMA(candles, 60);
+
+    if (last.close > ma20) score += 5;
+    if (last.close > ma60) score += 5;
+    if (last.close < ma20) score -= 5;
+    if (last.close < ma60) score -= 5;
+
+    // 4. Pattern Impact (20%)
+    if (signal.patterns && signal.patterns.length > 0) {
+        const p = signal.patterns[0];
+        if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'SYMMETRICAL_TRIANGLE'].includes(p.type)) score += 10;
+        if (['DESCENDING_TRIANGLE', 'DOUBLE_TOP'].includes(p.type)) score -= 10;
+    }
+
+    // Clamp score
+    const bullish = Math.min(95, Math.max(5, score));
+    const bearish = 100 - bullish;
+
+    return { bullish, bearish };
+}
+
+/**
  * Main Signal Generator
  */
 export function generatePIPSignal(candles) {
     if (!candles || candles.length < 20) {
-        return { signal: 'NEUTRAL', text: '🟡 資料不足', color: 'var(--text-secondary)' };
+        return { signal: 'NEUTRAL', text: '🟡 資料不足', color: 'var(--text-secondary)', probability: { bullish: 50, bearish: 50 } };
     }
 
     const pips = findPIPs(candles);
@@ -422,6 +463,8 @@ export function generatePIPSignal(candles) {
     
     let confidence = trend.confidence;
     let patternText = '';
+    let finalSignal = { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', confidence: 0, patterns };
+
     if (patterns.length > 0) {
         confidence = Math.min(1.0, confidence + 0.15);
         patternText = ` (${patterns[0].name})`;
@@ -438,24 +481,24 @@ export function generatePIPSignal(candles) {
             const lowerVal = t1.value + calculateSlope(t1, t2) * (candles.length - 1 - t1.index);
             
             if (last.close > upperVal && prev.close <= upperVal) {
-                return { signal: 'BUY', text: `🚀 向上突破${p.name}`, color: '#22c55e', details: { reason: 'BREAKOUT_UP', patterns }, confidence: 0.9 };
-            }
-            if (last.close < lowerVal && prev.close >= lowerVal) {
-                return { signal: 'SELL', text: `⚠️ 向下跌破${p.name}`, color: '#ef4444', details: { reason: 'BREAKOUT_DOWN', patterns }, confidence: 0.9 };
+                finalSignal = { signal: 'BUY', text: `🚀 向上突破${p.name}`, color: '#22c55e', details: { reason: 'BREAKOUT_UP', patterns }, confidence: 0.9 };
+            } else if (last.close < lowerVal && prev.close >= lowerVal) {
+                finalSignal = { signal: 'SELL', text: `⚠️ 向下跌破${p.name}`, color: '#ef4444', details: { reason: 'BREAKOUT_DOWN', patterns }, confidence: 0.9 };
             }
         }
         
         // 2. Double Pattern Breakout
-        if (p.type === 'DOUBLE_BOTTOM' && last.close > p.neckline && prev.close <= p.neckline) {
-            return { signal: 'BUY', text: `🚀 W底頸線突破`, color: '#22c55e', details: { reason: 'W_BREAKOUT', patterns }, confidence: 0.9 };
-        }
-        if (p.type === 'DOUBLE_TOP' && last.close < p.neckline && prev.close >= p.neckline) {
-            return { signal: 'SELL', text: `⚠️ M頭頸線跌破`, color: '#ef4444', details: { reason: 'M_BREAKOUT', patterns }, confidence: 0.9 };
+        if (finalSignal.signal === 'NEUTRAL') {
+            if (p.type === 'DOUBLE_BOTTOM' && last.close > p.neckline && prev.close <= p.neckline) {
+                finalSignal = { signal: 'BUY', text: `🚀 W底頸線突破`, color: '#22c55e', details: { reason: 'W_BREAKOUT', patterns }, confidence: 0.9 };
+            } else if (p.type === 'DOUBLE_TOP' && last.close < p.neckline && prev.close >= p.neckline) {
+                finalSignal = { signal: 'SELL', text: `⚠️ M頭頸線跌破`, color: '#ef4444', details: { reason: 'M_BREAKOUT', patterns }, confidence: 0.9 };
+            }
         }
     }
 
-    if (entry) {
-        return { 
+    if (finalSignal.signal === 'NEUTRAL' && entry) {
+        finalSignal = { 
             signal: 'BUY', 
             text: `🟢 ${entry.reason}${patternText}`, 
             color: '#22c55e', 
@@ -464,10 +507,13 @@ export function generatePIPSignal(candles) {
         };
     }
 
-    // Default trend-based status
-    if (trend.status === 'BULLISH') return { signal: 'HOLD', text: `🔵 多頭持股${patternText}`, color: '#3b82f6', confidence: confidence, patterns };
-    if (trend.status === 'BEARISH') return { signal: 'NEUTRAL', text: `🔴 空頭勢頭${patternText}`, color: '#ef4444', confidence: confidence, patterns };
-    if (trend.status === 'CONSOLIDATION') return { signal: 'NEUTRAL', text: `🟡 區間盤整${patternText}`, color: '#eab308', confidence: confidence, patterns };
-    
-    return { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', confidence: 0, patterns };
+    if (finalSignal.signal === 'NEUTRAL') {
+        if (trend.status === 'BULLISH') finalSignal = { signal: 'HOLD', text: `🔵 多頭持股${patternText}`, color: '#3b82f6', confidence: confidence, patterns };
+        else if (trend.status === 'BEARISH') finalSignal = { signal: 'NEUTRAL', text: `🔴 空頭勢頭${patternText}`, color: '#ef4444', confidence: confidence, patterns };
+        else if (trend.status === 'CONSOLIDATION') finalSignal = { signal: 'NEUTRAL', text: `🟡 區間盤整${patternText}`, color: '#eab308', confidence: confidence, patterns };
+    }
+
+    // Attach probability
+    finalSignal.probability = calculateProbability(finalSignal, trend, candles);
+    return finalSignal;
 }

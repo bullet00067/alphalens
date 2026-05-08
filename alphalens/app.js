@@ -637,7 +637,7 @@ async function updateObservationRow(ticker) {
     if (history && history.candles) {
         const pips = findPIPs(history.candles);
         const trend = analyzeTrend(pips, history.candles);
-        const signal = generatePIPSignal(history.candles);
+        const itemSignal = generatePIPSignal(history.candles);
 
         const trendCell = document.getElementById(`obs-trend-${ticker}`);
         const signalCell = document.getElementById(`obs-signal-${ticker}`);
@@ -647,14 +647,14 @@ async function updateObservationRow(ticker) {
             trendCell.innerHTML = `<span style="color: ${trend.status === 'BULLISH' ? '#22c55e' : (trend.status === 'CONSOLIDATION' ? '#eab308' : 'var(--text-secondary)')}">${trend.status}</span>`;
         }
         if (signalCell) {
-            signalCell.innerHTML = `<span style="color: ${signal.color}">${signal.text}</span>`;
+            signalCell.innerHTML = `<span style="color: ${itemSignal.color}">${itemSignal.text}</span>`;
         }
         if (confCell) {
             confCell.textContent = `${(trend.confidence * 100).toFixed(0)}%`;
         }
         
         // Cache this for the AI Assistant
-        updateTacticalCache(ticker, trend, signal);
+        updateTacticalCache(ticker, trend, itemSignal);
     }
 }
 
@@ -1065,7 +1065,7 @@ function calculateAISignals(ticker, candles) {
 
     const pips = findPIPs(recentCandles);
     const trend = analyzeTrend(pips, recentCandles);
-    const signal = generatePIPSignal(recentCandles);
+    const pipSignal = generatePIPSignal(recentCandles);
 
     const entryPrice = portfolioItem ? portfolioItem.cost : lastPrice;
     const qty = portfolioItem ? portfolioItem.qty : 0;
@@ -1110,7 +1110,7 @@ function calculateAISignals(ticker, candles) {
         entryPrice: entryPrice.toFixed(2),
         currentPrice: lastPrice,
         trend: trend,
-        signal: signal
+        signal: pipSignal
     };
 }
 
@@ -1271,17 +1271,40 @@ function setupSearch() {
 async function fetchTwseFallbackCandles(ticker) {
     const twTicker = cleanTwTicker(ticker);
     const today = new Date();
-    const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    // Using TWSE STOCK_DAY API via proxy
-    const url = `/twse/exchangeReport/STOCK_DAY?response=json&date=${dateStr}&stockNo=${twTicker}`;
     
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`TWSE Fetch failed: ${res.status}`);
-    const json = await res.json();
+    // Fetch last 3 months to ensure enough data for PIP/Patterns
+    const months = [];
+    for (let i = 0; i < 3; i++) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        months.push(`${y}${m}01`);
+    }
+
+    let allData = [];
+    let title = '';
     
-    if (!json.data || json.data.length === 0) throw new Error("No data from TWSE");
+    for (const dateStr of months) {
+        try {
+            const url = `/twse/exchangeReport/STOCK_DAY?response=json&date=${dateStr}&stockNo=${twTicker}`;
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            const json = await res.json();
+            if (json.data && json.data.length > 0) {
+                allData = [...json.data, ...allData]; // Append in chronological order (months are fetched reverse)
+                if (!title) title = json.title;
+            }
+        } catch (e) {
+            console.warn(`Failed to fetch TWSE data for ${dateStr}`, e);
+        }
+    }
+
+    if (allData.length === 0) throw new Error("No data from TWSE");
     
-    const candles = json.data.map(row => {
+    // Deduplicate if any
+    const uniqueData = Array.from(new Set(allData.map(r => JSON.stringify(r)))).map(s => JSON.parse(s));
+    
+    const candles = uniqueData.map(row => {
         try {
             const dateParts = row[0].split('/');
             if (dateParts.length < 3) return null;
@@ -1602,18 +1625,44 @@ async function loadChartData(ticker, tf) {
                 });
             }
 
-            const signal = generatePIPSignal(candles);
-            // Update Pattern Label
-            if (signal.patterns && signal.patterns.length > 0) {
-                const p = signal.patterns[0];
+            const tacticalSignal = typeof generatePIPSignal === 'function' ? generatePIPSignal(candles) : { patterns: [], probability: { bullish: 50, bearish: 50 } };
+            
+            // Update Pattern & Probability
+            if (tacticalSignal && tacticalSignal.patterns && tacticalSignal.patterns.length > 0) {
+                const p = tacticalSignal.patterns[0];
                 patternLabel.textContent = `PATTERN: ${p.name}`;
                 patternLabel.style.display = 'block';
-                patternLabel.style.background = `${p.color}33`; // 20% opacity hex
+                patternLabel.style.background = `${p.color}33`;
                 patternLabel.style.color = p.color;
-                patternLabel.style.borderColor = `${p.color}4d`; // 30% opacity hex
+                patternLabel.style.borderColor = `${p.color}4d`;
             } else {
                 patternLabel.style.display = 'none';
             }
+
+            // Display Probability
+            let probContainer = document.getElementById('tactical-probability');
+            if (!probContainer) {
+                probContainer = document.createElement('div');
+                probContainer.id = 'tactical-probability';
+                probContainer.className = 'probability-container';
+                patternLabel.parentNode.insertBefore(probContainer, patternLabel.nextSibling);
+            }
+
+            const prob = tacticalSignal.probability || { bullish: 50, bearish: 50 };
+            probContainer.innerHTML = `
+                <div class="prob-header">
+                    <span>Forecast Confidence</span>
+                    <span class="prob-val ${prob.bullish >= 50 ? 'bull' : 'bear'}">${Math.max(prob.bullish, prob.bearish)}%</span>
+                </div>
+                <div class="prob-bar-bg">
+                    <div class="prob-bar-fill bull" style="width: ${prob.bullish}%"></div>
+                    <div class="prob-bar-fill bear" style="width: ${prob.bearish}%"></div>
+                </div>
+                <div class="prob-footer">
+                    <span class="bull-label">BULL ${prob.bullish}%</span>
+                    <span class="bear-label">BEAR ${prob.bearish}%</span>
+                </div>
+            `;
         }
         
         // Show AI Signal Card
