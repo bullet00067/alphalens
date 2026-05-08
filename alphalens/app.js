@@ -46,8 +46,17 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const TWELVEDATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
 
 // API Bases
-const FINMIND_BASE = '/finmind/api/v4/data';
-const TWSE_BASE = '/twse/exchangeReport/STOCK_DAY';
+const PROXY_BASE = 'https://api.allorigins.win/get?url=';
+const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data';
+const TWSE_BASE = 'https://www.twse.com.tw/exchangeReport/STOCK_DAY';
+
+async function fetchWithProxy(url) {
+    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`);
+    if (!res.ok) throw new Error(`Proxy fetch failed: ${res.status}`);
+    const data = await res.json();
+    // AllOrigins returns the string content of the page
+    return typeof data.contents === 'string' ? JSON.parse(data.contents) : data.contents;
+}
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVEDATA_BASE = 'https://api.twelvedata.com';
 
@@ -223,15 +232,9 @@ async function getQuickQuote(ticker) {
     if (isTaiwanStock(ticker)) {
         try {
             const cleanTicker = cleanTwTicker(ticker);
-            const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${cleanTicker}&start_date=${new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0]}`);
+            const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${cleanTicker}&start_date=${new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0]}`;
+            const data = await fetchWithProxy(url);
             
-            if (res.status === 402 || res.status === 429) {
-                const fallback = await fetchTwseFallbackCandles(ticker);
-                return { price: fallback.quote.c, change: fallback.quote.d, d: fallback.quote.dp };
-            }
-            
-            if (!res.ok) return { price: 0, change: 0, d: 0, error: `HTTP ${res.status}` };
-            const data = await res.json();
             if (data.data && data.data.length > 0) {
                 const latest = data.data[data.data.length - 1];
                 return { price: latest.close, change: latest.spread, d: (latest.spread / (latest.close - latest.spread)) * 100 };
@@ -720,9 +723,8 @@ async function getTaiwanStockName(ticker) {
     if (!isTaiwanStock(ticker)) return '';
     if (twStockNames[ticker]) return twStockNames[ticker];
     try {
-        const response = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${ticker}`);
-        if (!response.ok) return null;
-        const data = await response.json();
+        const url = `${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${ticker}`;
+        const data = await fetchWithProxy(url);
         if (data && data.data && data.data.length > 0) {
             twStockNames[ticker] = data.data[0].stock_name;
             return twStockNames[ticker];
@@ -1198,8 +1200,8 @@ async function populateDashboard() {
                 pastMonth.setDate(today.getDate() - 30);
                 
                 const formatDt = (d) => d.toISOString().split('T')[0];
-                const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(pastMonth)}`);
-                const data = await res.json();
+                const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(pastMonth)}`;
+                const data = await fetchWithProxy(url);
                 
                 if (data.data && data.data.length > 0) {
                     const latest = data.data[data.data.length - 1];
@@ -1286,10 +1288,8 @@ async function fetchTwseFallbackCandles(ticker) {
     
     for (const dateStr of months) {
         try {
-            const url = `/twse/exchangeReport/STOCK_DAY?response=json&date=${dateStr}&stockNo=${twTicker}`;
-            const res = await fetch(url);
-            if (!res.ok) continue;
-            const json = await res.json();
+            const url = `${TWSE_BASE}?response=json&date=${dateStr}&stockNo=${twTicker}`;
+            const json = await fetchWithProxy(url);
             if (json.data && json.data.length > 0) {
                 allData = [...json.data, ...allData]; // Append in chronological order (months are fetched reverse)
                 if (!title) title = json.title;
@@ -1346,7 +1346,7 @@ async function fetchTwseFallbackCandles(ticker) {
             pc: candles[candles.length-2]?.close || latest.open 
         },
         candles,
-        profile: { name: json.title ? json.title.split(' ')[2] : ticker }
+        profile: { name: title ? title.split(' ')[2] : ticker }
     };
 }
 
@@ -1357,16 +1357,8 @@ async function fetchTwseCandles(ticker, tf) {
         const start = new Date();
         start.setFullYear(end.getFullYear() - 1);
         
-        const formatDt = (d) => d.toISOString().split('T')[0];
-        const res = await fetch(`${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`);
-        
-        if (res.status === 402 || res.status === 429) {
-            console.warn(`FinMind limit hit, switching to TWSE fallback...`);
-            return await fetchTwseFallbackCandles(ticker);
-        }
-        
-        if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
-        const data = await res.json();
+        const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`;
+        const data = await fetchWithProxy(url);
         
         if(!data.data || data.data.length === 0) {
             return await fetchTwseFallbackCandles(ticker);
