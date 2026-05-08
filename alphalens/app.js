@@ -46,16 +46,31 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const TWELVEDATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
 
 // API Bases
-const PROXY_BASE = 'https://api.allorigins.win/get?url=';
+const PROXY_BASE = 'https://corsproxy.io/?';
 const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data';
 const TWSE_BASE = 'https://www.twse.com.tw/exchangeReport/STOCK_DAY';
 
+// Simple in-memory cache to speed up repeated requests
+const apiCache = new Map();
+
 async function fetchWithProxy(url) {
+    // Check cache first
+    if (apiCache.has(url)) {
+        const cached = apiCache.get(url);
+        if (Date.now() - cached.time < 300000) { // 5 minute cache
+            return cached.data;
+        }
+    }
+
     const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`);
     if (!res.ok) throw new Error(`Proxy fetch failed: ${res.status}`);
+    
+    // corsproxy.io returns the raw response, unlike allorigins
     const data = await res.json();
-    // AllOrigins returns the string content of the page
-    return typeof data.contents === 'string' ? JSON.parse(data.contents) : data.contents;
+    
+    // Save to cache
+    apiCache.set(url, { data, time: Date.now() });
+    return data;
 }
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVEDATA_BASE = 'https://api.twelvedata.com';
@@ -1286,18 +1301,26 @@ async function fetchTwseFallbackCandles(ticker) {
     let allData = [];
     let title = '';
     
-    for (const dateStr of months) {
+    // Parallel fetch for all months
+    const fetchPromises = months.map(async (dateStr) => {
         try {
             const url = `${TWSE_BASE}?response=json&date=${dateStr}&stockNo=${twTicker}`;
-            const json = await fetchWithProxy(url);
-            if (json.data && json.data.length > 0) {
-                allData = [...json.data, ...allData]; // Append in chronological order (months are fetched reverse)
-                if (!title) title = json.title;
-            }
+            return await fetchWithProxy(url);
         } catch (e) {
             console.warn(`Failed to fetch TWSE data for ${dateStr}`, e);
+            return null;
         }
-    }
+    });
+
+    const results = await Promise.all(fetchPromises);
+    
+    // Process results (reverse them to maintain chronological order as months are [latest, mid, oldest])
+    results.reverse().forEach(json => {
+        if (json && json.data && json.data.length > 0) {
+            allData = [...allData, ...json.data];
+            if (!title) title = json.title;
+        }
+    });
 
     if (allData.length === 0) throw new Error("No data from TWSE");
     
