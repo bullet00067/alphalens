@@ -46,9 +46,12 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const TWELVEDATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
 
 // API Bases
-const PROXY_BASE = 'https://corsproxy.io/?';
+const PROXY_BASE = 'https://api.allorigins.win/get?url=';
 const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data';
 const TWSE_BASE = 'https://www.twse.com.tw/exchangeReport/STOCK_DAY';
+
+// Helper for date formatting
+const formatDt = (d) => d.toISOString().split('T')[0];
 
 // Simple in-memory cache to speed up repeated requests
 const apiCache = new Map();
@@ -65,8 +68,9 @@ async function fetchWithProxy(url) {
     const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`);
     if (!res.ok) throw new Error(`Proxy fetch failed: ${res.status}`);
     
-    // corsproxy.io returns the raw response, unlike allorigins
-    const data = await res.json();
+    const json = await res.json();
+    // AllOrigins returns the string content of the page in 'contents'
+    const data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
     
     // Save to cache
     apiCache.set(url, { data, time: Date.now() });
@@ -1214,7 +1218,7 @@ async function populateDashboard() {
                 const pastMonth = new Date();
                 pastMonth.setDate(today.getDate() - 30);
                 
-                const formatDt = (d) => d.toISOString().split('T')[0];
+                
                 const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(pastMonth)}`;
                 const data = await fetchWithProxy(url);
                 
