@@ -46,9 +46,9 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const TWELVEDATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
 
 // API Bases
-const PROXY_BASE = 'https://api.allorigins.win/get?url=';
-const FINMIND_BASE = 'https://api.finmindtrade.com/api/v4/data';
-const TWSE_BASE = 'https://www.twse.com.tw/exchangeReport/STOCK_DAY';
+const PROXY_BASE = ''; // Using relative paths to hit Express/Vite proxy
+const FINMIND_BASE = '/finmind';
+const TWSE_BASE = '/twse';
 
 // Helper for date formatting
 const formatDt = (d) => d.toISOString().split('T')[0];
@@ -65,12 +65,11 @@ async function fetchWithProxy(url) {
         }
     }
 
-    const res = await fetch(`${PROXY_BASE}${encodeURIComponent(url)}`);
-    if (!res.ok) throw new Error(`Proxy fetch failed: ${res.status}`);
+    // Since we are using relative paths (/twse, /finmind), we don't need a public CORS proxy anymore
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
     
-    const json = await res.json();
-    // AllOrigins returns the string content of the page in 'contents'
-    const data = typeof json.contents === 'string' ? JSON.parse(json.contents) : json.contents;
+    const data = await res.json();
     
     // Save to cache
     apiCache.set(url, { data, time: Date.now() });
