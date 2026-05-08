@@ -1286,8 +1286,6 @@ tbody tr:hover {
             padding: 8px !important;
         }
     }
-}
-
     /* Table to Card Transformation - Premium Upgrade */
     .table-responsive thead {
         display: none !important;
