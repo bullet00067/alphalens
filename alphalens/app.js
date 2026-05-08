@@ -2587,10 +2587,10 @@ function renderStructureLabels(pips, chartInstance) {
         
         if (curr.value > prev.value && curr.value > next.value) {
             // Peak - Check if HH or LH
-            const prevPeaks = pips.slice(0, i).filter((p, idx) => idx > 0 \u0026\u0026 p.value \u003e pips[idx-1].value \u0026\u0026 p.value \u003e pips[idx+1].value);
-            if (prevPeaks.length \u003e 0) {
+            const prevPeaks = pips.slice(0, i).filter((p, idx) => idx > 0 && p.value > pips[idx-1].value && p.value > pips[idx+1].value);
+            if (prevPeaks.length > 0) {
                 const lastPeak = prevPeaks[prevPeaks.length - 1];
-                label = curr.value \u003e lastPeak.value ? 'HH' : 'LH';
+                label = curr.value > lastPeak.value ? 'HH' : 'LH';
             } else {
                 label = 'H';
             }
@@ -2598,10 +2598,10 @@ function renderStructureLabels(pips, chartInstance) {
             position = 'aboveBar';
         } else if (curr.value < prev.value && curr.value < next.value) {
             // Trough - Check if HL or LL
-            const prevTroughs = pips.slice(0, i).filter((p, idx) => idx > 0 \u0026\u0026 p.value \u003c pips[idx-1].value \u0026\u0026 p.value \u003c pips[idx+1].value);
-            if (prevTroughs.length \u003e 0) {
+            const prevTroughs = pips.slice(0, i).filter((p, idx) => idx > 0 && p.value < pips[idx-1].value && p.value < pips[idx+1].value);
+            if (prevTroughs.length > 0) {
                 const lastTrough = prevTroughs[prevTroughs.length - 1];
-                label = curr.value \u003e lastTrough.value ? 'HL' : 'LL';
+                label = curr.value > lastTrough.value ? 'HL' : 'LL';
             } else {
                 label = 'L';
             }
