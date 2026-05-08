@@ -37,6 +37,10 @@ const twStockNames = {}; // Cache for Taiwan stock names
 let pipChartInstance = null;
 let pipLineSeries = null;
 let isPipTacticalEnabled = false;
+let isPipOverlayEnabled = false;
+let mainPipSeries = null;
+let patternOverlaySeries = null; // For Triangle/MW legs in tactical chart
+let structureLabelSeries = null; // For HH/HL markers
 let patternUpperSeries = null;
 let patternLowerSeries = null;
 
@@ -1618,7 +1622,11 @@ async function loadChartData(ticker, tf) {
                 height: 180,
                 layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
                 grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
-                timeScale: { visible: false, borderVisible: false },
+                timeScale: { 
+                    visible: true, 
+                    borderVisible: false,
+                    borderColor: 'rgba(255,255,255,0.1)'
+                },
                 rightPriceScale: { borderVisible: false },
                 crosshair: { mode: CrosshairMode.Normal }
             });
@@ -1631,14 +1639,48 @@ async function loadChartData(ticker, tf) {
                 crosshairMarkerVisible: true
             });
 
+            // New: Pattern legs and labels
+            patternOverlaySeries = pipChartInstance.addSeries(LineSeries, {
+                lineWidth: 2,
+                lineStyle: 0, // Solid
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+
+            structureLabelSeries = pipChartInstance.addSeries(LineSeries, {
+                visible: false, // Only used for markers
+                priceLineVisible: false,
+                lastValueVisible: false
+            });
+
             const pips = findPIPs(candles);
             pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.value })));
             
-            // Sync Time Scale
-            if (currentStockChart && currentStockChart.timeScale()) {
+            // --- Sync Logic (Bidirectional Time & Crosshair) ---
+            if (currentStockChart) {
+                // Sync Time Scale: Main -> PIP
                 currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                    if (range && pipChartInstance) {
-                        pipChartInstance.timeScale().setVisibleLogicalRange(range);
+                    if (range) pipChartInstance.timeScale().setVisibleLogicalRange(range);
+                });
+                // Sync Time Scale: PIP -> Main
+                pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                    if (range) currentStockChart.timeScale().setVisibleLogicalRange(range);
+                });
+
+                // Sync Crosshair
+                currentStockChart.subscribeCrosshairMove(param => {
+                    if (!param.time) {
+                        pipChartInstance.clearCrosshairPosition();
+                    } else {
+                        pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
+                    }
+                });
+                pipChartInstance.subscribeCrosshairMove(param => {
+                    if (!param.time) {
+                        currentStockChart.clearCrosshairPosition();
+                    } else {
+                        currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries);
                     }
                 });
             }
@@ -1653,9 +1695,17 @@ async function loadChartData(ticker, tf) {
                 patternLabel.style.background = `${p.color}33`;
                 patternLabel.style.color = p.color;
                 patternLabel.style.borderColor = `${p.color}4d`;
+                
+                // New: Draw pattern geometry
+                renderPatternGeometry(p, pips, pipChartInstance);
             } else {
                 patternLabel.style.display = 'none';
+                if (patternUpperSeries) patternUpperSeries.setData([]);
+                if (patternLowerSeries) patternLowerSeries.setData([]);
             }
+
+            // New: Draw structure labels
+            renderStructureLabels(pips, pipChartInstance);
 
             // Display Probability
             let probContainer = document.getElementById('tactical-probability');
@@ -1872,16 +1922,22 @@ function renderTradingViewChart(data) {
     
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
-        color: 'rgba(234, 179, 8, 0.8)', // Yellowish
+        color: '#facc15', // Bright Yellow
         lineWidth: 2,
-        lineStyle: 3, // Dotted
-        crosshairMarkerVisible: true
+        lineStyle: 0, // Solid
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: true,
+        visible: isPipOverlayEnabled
     });
     
     // Dynamic PIP update on visible range change
     let pipTimeout = null;
     currentStockChart.timeScale().subscribeVisibleLogicalRangeChange((logicalRange) => {
-        if (!logicalRange || !data || data.length === 0) return;
+        if (!logicalRange || !data || data.length === 0 || !isPipOverlayEnabled) {
+            if (pipSeries) pipSeries.setData([]);
+            return;
+        }
         
         // Debounce calculation to maintain 60fps
         if (pipTimeout) clearTimeout(pipTimeout);
@@ -1927,32 +1983,36 @@ function renderTradingViewChart(data) {
     toggleVolume(true);
 
     // Initial PIP markers to ensure they show up immediately for the default 60-bar view
-    try {
-        const initialRange = data.slice(-60);
-        const initialPips = findPIPs(initialRange);
-        pipSeries.setData(initialPips);
-        const initialMarkers = initialPips.map((p, idx) => {
-            let isHigh;
-            if (idx > 0 && idx < initialPips.length - 1) {
-                isHigh = p.value > initialPips[idx-1].value && p.value > initialPips[idx+1].value;
-            } else if (idx === 0 && initialPips.length > 1) {
-                isHigh = p.value > initialPips[1].value;
-            } else if (idx === initialPips.length - 1 && initialPips.length > 1) {
-                isHigh = p.value > initialPips[idx-1].value;
-            } else {
-                isHigh = true;
-            }
-            return {
-                time: p.time,
-                position: isHigh ? 'aboveBar' : 'belowBar',
-                color: isHigh ? '#ef4444' : '#10b981',
-                shape: isHigh ? 'arrowDown' : 'arrowUp'
-            };
-        });
-        currentPipMarkers = initialMarkers;
-        createSeriesMarkers(candlestickSeries, initialMarkers);
-    } catch (e) {
-        console.error("Initial PIP markers failed:", e);
+    if (isPipOverlayEnabled) {
+        try {
+            const initialRange = data.slice(-60);
+            const initialPips = findPIPs(initialRange);
+            pipSeries.setData(initialPips);
+            const initialMarkers = initialPips.map((p, idx) => {
+                let isHigh;
+                if (idx > 0 && idx < initialPips.length - 1) {
+                    isHigh = p.value > initialPips[idx-1].value && p.value > initialPips[idx+1].value;
+                } else if (idx === 0 && initialPips.length > 1) {
+                    isHigh = p.value > initialPips[1].value;
+                } else if (idx === initialPips.length - 1 && initialPips.length > 1) {
+                    isHigh = p.value > initialPips[idx-1].value;
+                } else {
+                    isHigh = true;
+                }
+                return {
+                    time: p.time,
+                    position: isHigh ? 'aboveBar' : 'belowBar',
+                    color: isHigh ? '#ef4444' : '#10b981',
+                    shape: isHigh ? 'arrowDown' : 'arrowUp'
+                };
+            });
+            currentPipMarkers = initialMarkers;
+            createSeriesMarkers(candlestickSeries, initialMarkers);
+        } catch (e) {
+            console.error("Initial PIP markers failed:", e);
+        }
+    } else {
+        createSeriesMarkers(candlestickSeries, []);
     }
 
     // Interactive Marker Hover Logic
@@ -2239,6 +2299,8 @@ function initIndicators() {
                 toggleRSI(!isActive, period);
             } else if (type === 'pip-tactical') {
                 togglePipTactical();
+            } else if (type === 'pip-overlay') {
+                togglePipOverlay();
             }
         });
     });
@@ -2263,6 +2325,24 @@ function togglePipTactical() {
     }
     
     // Force re-render to initialize or update the tactical chart
+    const ticker = document.getElementById('detail-ticker').textContent;
+    if (ticker) loadStockDetail(ticker);
+}
+
+function togglePipOverlay() {
+    isPipOverlayEnabled = !isPipOverlayEnabled;
+    const btn = document.querySelector('[data-type="pip-overlay"]');
+    
+    if (isPipOverlayEnabled) {
+        btn.classList.add('active');
+    } else {
+        btn.classList.remove('active');
+        if (mainPipSeries) {
+            mainPipSeries.setData([]);
+        }
+    }
+    
+    // Force re-render to update the main chart with PIP line
     const ticker = document.getElementById('detail-ticker').textContent;
     if (ticker) loadStockDetail(ticker);
 }
@@ -2444,4 +2524,105 @@ function addAiMessage(text) {
 function scrollToBottom() {
     const messagesContainer = document.getElementById('chat-messages');
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+function renderPatternGeometry(pattern, pips, chartInstance) {
+    if (!pattern || !chartInstance) return;
+    
+    // Ensure we have series
+    if (!patternUpperSeries) {
+        patternUpperSeries = chartInstance.addSeries(LineSeries, { 
+            color: pattern.color, 
+            lineWidth: 2, 
+            lineStyle: 0, 
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false 
+        });
+    } else {
+        patternUpperSeries.applyOptions({ color: pattern.color });
+    }
+    
+    if (!patternLowerSeries) {
+        patternLowerSeries = chartInstance.addSeries(LineSeries, { 
+            color: pattern.color, 
+            lineWidth: 2, 
+            lineStyle: 0,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false
+        });
+    } else {
+        patternLowerSeries.applyOptions({ color: pattern.color });
+    }
+
+    if (pattern.type.includes('TRIANGLE')) {
+        const p1 = pattern.points[0]; const p2 = pattern.points[1];
+        const t1 = pattern.points[2]; const t2 = pattern.points[3];
+        
+        // Basic legs
+        patternUpperSeries.setData([{ time: p1.time, value: p1.value }, { time: p2.time, value: p2.value }]);
+        patternLowerSeries.setData([{ time: t1.time, value: t1.value }, { time: t2.time, value: t2.value }]);
+    } else if (pattern.type.includes('DOUBLE')) {
+        // For M/W, just highlight the peaks/troughs for now or connect them
+        const points = pattern.points.sort((a, b) => a.index - b.index);
+        if (points.length >= 2) {
+            patternUpperSeries.setData(points.map(p => ({ time: p.time, value: p.value })));
+            patternLowerSeries.setData([]); // Not used for double patterns
+        }
+    }
+}
+
+function renderStructureLabels(pips, chartInstance) {
+    if (!pips || pips.length < 3 || !chartInstance) return;
+    
+    const markers = [];
+    for (let i = 1; i < pips.length - 1; i++) {
+        const prev = pips[i-1];
+        const curr = pips[i];
+        const next = pips[i+1];
+        
+        let label = '';
+        let color = '#94a3b8';
+        let position = 'aboveBar';
+        
+        if (curr.value > prev.value && curr.value > next.value) {
+            // Peak - Check if HH or LH
+            const prevPeaks = pips.slice(0, i).filter((p, idx) => idx > 0 \u0026\u0026 p.value \u003e pips[idx-1].value \u0026\u0026 p.value \u003e pips[idx+1].value);
+            if (prevPeaks.length \u003e 0) {
+                const lastPeak = prevPeaks[prevPeaks.length - 1];
+                label = curr.value \u003e lastPeak.value ? 'HH' : 'LH';
+            } else {
+                label = 'H';
+            }
+            color = '#ef4444';
+            position = 'aboveBar';
+        } else if (curr.value < prev.value && curr.value < next.value) {
+            // Trough - Check if HL or LL
+            const prevTroughs = pips.slice(0, i).filter((p, idx) => idx > 0 \u0026\u0026 p.value \u003c pips[idx-1].value \u0026\u0026 p.value \u003c pips[idx+1].value);
+            if (prevTroughs.length \u003e 0) {
+                const lastTrough = prevTroughs[prevTroughs.length - 1];
+                label = curr.value \u003e lastTrough.value ? 'HL' : 'LL';
+            } else {
+                label = 'L';
+            }
+            color = '#22c55e';
+            position = 'belowBar';
+        }
+        
+        if (label) {
+            markers.push({
+                time: curr.time,
+                position: position,
+                color: color,
+                shape: 'circle',
+                text: label,
+                size: 1
+            });
+        }
+    }
+    
+    // Set markers on the invisible series to show them on the chart
+    if (structureLabelSeries) {
+        createSeriesMarkers(structureLabelSeries, markers);
+    }
 }

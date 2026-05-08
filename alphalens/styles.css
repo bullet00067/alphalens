@@ -1518,6 +1518,15 @@ tbody tr:hover {
     border: 1px solid var(--border-glass);
 }
 
+.probability-container {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-glass);
+    border-radius: 12px;
+    padding: 16px;
+    margin-top: 16px;
+    animation: fadeIn 0.4s ease-out;
+}
+
 .prob-header {
     display: flex;
     justify-content: space-between;
@@ -1561,3 +1570,9 @@ tbody tr:hover {
 
 .bull-label { color: var(--positive); }
 .bear-label { color: var(--negative); opacity: 0.8; }
+
+.indicator-btn[data-type="pip-overlay"].active {
+    background: rgba(234, 179, 8, 0.2) !important;
+    border-color: #eab308 !important;
+    color: #eab308 !important;
+}
