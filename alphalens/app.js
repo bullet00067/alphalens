@@ -687,12 +687,11 @@ async function renderObservationList() {
     listBody.innerHTML = '';
 
     for (const obs of observationList) {
+        const ticker = obs.ticker;
         const row = document.createElement('tr');
         row.classList.add('clickable-row');
         row.setAttribute('data-ticker', ticker);
         row.setAttribute('data-action', 'view-detail');
-
-        const ticker = obs.ticker;
         row.innerHTML = `
             <td data-label="Ticker" style="padding: 16px 12px;"><span class="ticker-badge">${ticker}</span></td>
             <td data-label="Price" id="obs-price-${ticker}" style="text-align: right;">...</td>
@@ -1434,9 +1433,61 @@ async function fetchTwseFallbackCandles(ticker) {
             l: latest.low, 
             pc: candles[candles.length-2]?.close || latest.open 
         },
-        candles,
+        candles: aggregateCandles(candles, tf),
         profile: { name: title ? title.split(' ')[2] : ticker }
     };
+}
+
+/**
+ * Helper to aggregate daily candles into higher timeframes
+ */
+function aggregateCandles(candles, tf) {
+    if (!tf || tf === '1day' || !candles || candles.length === 0) return candles;
+    
+    const result = [];
+    const groups = {};
+
+    candles.forEach(candle => {
+        let dateObj;
+        if (typeof candle.time === 'number') {
+            dateObj = new Date(candle.time * 1000);
+        } else {
+            dateObj = new Date(candle.time);
+        }
+
+        let key;
+        const year = dateObj.getFullYear();
+        
+        if (tf === '1week') {
+            const day = dateObj.getDay();
+            const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(dateObj.setDate(diff));
+            key = `${monday.getFullYear()}-W${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+        } else if (tf === '1month') {
+            key = `${year}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
+        } else if (tf === '1year') {
+            key = `${year}`;
+        } else {
+            return;
+        }
+        
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(candle);
+    });
+
+    for (const key in groups) {
+        const group = groups[key];
+        result.push({
+            time: group[0].time,
+            open: group[0].open,
+            high: Math.max(...group.map(g => g.high)),
+            low: Math.min(...group.map(g => g.low)),
+            close: group[group.length - 1].close,
+            volume: group.reduce((sum, g) => sum + (g.volume || 0), 0)
+        });
+    }
+    
+    return result;
 }
 
 async function fetchTwseCandles(ticker, tf) {
@@ -1473,7 +1524,7 @@ async function fetchTwseCandles(ticker, tf) {
             pc: candles[candles.length-2]?.close || latest.open 
         };
 
-        return { quote, candles, profile: { name } };
+        return { quote, candles: aggregateCandles(candles, tf), profile: { name } };
     } catch (e) {
         console.error("FinMind Error, trying TWSE fallback:", e);
         return await fetchTwseFallbackCandles(ticker);
@@ -2114,45 +2165,6 @@ function clearIndicators() {
     document.querySelectorAll('.indicator-btn').forEach(btn => btn.classList.remove('active'));
 }
 
-// --- Timeframe Aggregation Helper ---
-function aggregateCandles(dailyData, tf) {
-    if (tf === '1day') return dailyData;
-    
-    const result = [];
-    const groups = {};
-
-    dailyData.forEach(d => {
-        const date = new Date(d.time * 1000);
-        let key;
-        if (tf === '1week') {
-            // Group by Year and ISO Week
-            const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
-            const pastDaysOfYear = (date - firstDayOfYear) / 86400000;
-            const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-            key = `${date.getFullYear()}-W${weekNum}`;
-        } else if (tf === '1month') {
-            key = `${date.getFullYear()}-${date.getMonth() + 1}`;
-        } else if (tf === '1year') {
-            key = `${date.getFullYear()}`;
-        }
-        
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(d);
-    });
-
-    for (const key in groups) {
-        const group = groups[key];
-        result.push({
-            time: group[0].time, // Use the start of the period
-            open: group[0].open,
-            high: Math.max(...group.map(g => g.high)),
-            low: Math.min(...group.map(g => g.low)),
-            close: group[group.length - 1].close,
-            volume: group.reduce((sum, g) => sum + (g.volume || 0), 0)
-        });
-    }
-    return result;
-}
 
 function initIndicators() {
     document.getElementById('clear-indicators-btn').addEventListener('click', clearIndicators);
