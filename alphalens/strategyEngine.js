@@ -323,6 +323,14 @@ export function identifyPatterns(pips, useCache = true) {
     const doublePattern = checkDoublePattern(peaks, troughs);
     if (doublePattern) patterns.push(doublePattern);
 
+    // 3. Check for Head and Shoulders
+    const hs = checkHeadAndShoulders(peaks, troughs);
+    if (hs) patterns.push(hs);
+
+    // 4. Check for Triple Top/Bottom
+    const triple = checkTriplePattern(peaks, troughs);
+    if (triple) patterns.push(triple);
+
     if (useCache) {
         patternCache.set(cacheKey, patterns);
     }
@@ -407,6 +415,58 @@ function checkDoublePattern(peaks, troughs) {
     return null;
 }
 
+function checkHeadAndShoulders(peaks, troughs) {
+    const tol = 0.02;
+    if (peaks.length >= 3) {
+        const p1 = peaks[peaks.length - 3];
+        const p2 = peaks[peaks.length - 2];
+        const p3 = peaks[peaks.length - 1];
+        if (p2.value > p1.value && p2.value > p3.value) {
+            const shoulderDiff = Math.abs(p1.value - p3.value) / ((p1.value + p3.value) / 2);
+            if (shoulderDiff < tol) {
+                const neckTroughs = troughs.filter(t => t.index > p1.index && t.index < p3.index);
+                const neckline = neckTroughs.length > 0 ? neckTroughs.reduce((sum, t) => sum + t.value, 0) / neckTroughs.length : Math.min(p1.value, p3.value) * 0.95;
+                return { type: 'HEAD_AND_SHOULDERS', name: '頭肩頂', color: '#ef4444', points: [p1, p2, p3], neckline };
+            }
+        }
+    }
+    if (troughs.length >= 3) {
+        const t1 = troughs[troughs.length - 3];
+        const t2 = troughs[troughs.length - 2];
+        const t3 = troughs[troughs.length - 1];
+        if (t2.value < t1.value && t2.value < t3.value) {
+            const shoulderDiff = Math.abs(t1.value - t3.value) / ((t1.value + t3.value) / 2);
+            if (shoulderDiff < tol) {
+                const neckPeaks = peaks.filter(p => p.index > t1.index && p.index < t3.index);
+                const neckline = neckPeaks.length > 0 ? neckPeaks.reduce((sum, p) => sum + p.value, 0) / neckPeaks.length : Math.max(t1.value, t3.value) * 1.05;
+                return { type: 'INVERTED_HS', name: '頭肩底', color: '#22c55e', points: [t1, t2, t3], neckline };
+            }
+        }
+    }
+    return null;
+}
+
+function checkTriplePattern(peaks, troughs) {
+    const tol = 0.015;
+    if (peaks.length >= 3) {
+        const p1 = peaks[peaks.length - 3];
+        const p2 = peaks[peaks.length - 2];
+        const p3 = peaks[peaks.length - 1];
+        const maxP = Math.max(p1.value, p2.value, p3.value);
+        const minP = Math.min(p1.value, p2.value, p3.value);
+        if ((maxP - minP) / minP < tol) return { type: 'TRIPLE_TOP', name: '三重頂', color: '#ef4444', points: [p1, p2, p3] };
+    }
+    if (troughs.length >= 3) {
+        const t1 = troughs[troughs.length - 3];
+        const t2 = troughs[troughs.length - 2];
+        const t3 = troughs[troughs.length - 1];
+        const maxT = Math.max(t1.value, t2.value, t3.value);
+        const minT = Math.min(t1.value, t2.value, t3.value);
+        if ((maxT - minT) / minT < tol) return { type: 'TRIPLE_BOTTOM', name: '三重底', color: '#22c55e', points: [t1, t2, t3] };
+    }
+    return null;
+}
+
 /**
  * Calculate Bullish/Bearish Probability based on multiple indicators
  */
@@ -451,12 +511,12 @@ export function calculateProbability(signal, trend, candles) {
 /**
  * Main Signal Generator
  */
-export function generatePIPSignal(candles) {
+export function generatePIPSignal(candles, providedPips = null) {
     if (!candles || candles.length < 20) {
         return { signal: 'NEUTRAL', text: '🟡 資料不足', color: 'var(--text-secondary)', probability: { bullish: 50, bearish: 50 } };
     }
 
-    const pips = findPIPs(candles);
+    const pips = providedPips || findPIPs(candles);
     const trend = analyzeTrend(pips, candles);
     const patterns = identifyPatterns(pips);
     const entry = evaluateEntry(candles, pips, trend);

@@ -1667,8 +1667,10 @@ async function loadChartData(ticker, tf) {
             });
             pipGhostSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
 
-            const pips = findPIPs(candles);
-            pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.value })));
+            // Initial PIP calculation will be handled by the sync logic below via refreshPipAnalysis
+            // but we do a baseline set here to avoid blank chart
+            const initialPips = findPIPs(candles.slice(-60));
+            pipLineSeries.setData(initialPips.map(p => ({ time: p.time, value: p.value })));
             
             // --- Sync Logic (Bidirectional Time & Crosshair) ---
             if (currentStockChart) {
@@ -1755,7 +1757,7 @@ async function loadChartData(ticker, tf) {
                 </div>
             `;
         }
-        
+
         // Show AI Signal Card
         if (candles.length > 0) {
             const signals = calculateAISignals(ticker, candles);
@@ -1968,40 +1970,7 @@ function renderTradingViewChart(data) {
         // Debounce calculation to maintain 60fps
         if (pipTimeout) clearTimeout(pipTimeout);
         pipTimeout = setTimeout(() => {
-            try {
-                const startIdx = Math.max(0, Math.floor(logicalRange.from));
-                const endIdx = Math.min(data.length - 1, Math.ceil(logicalRange.to));
-                
-                if (endIdx - startIdx > 5) {
-                    const visibleData = data.slice(startIdx, endIdx + 1);
-                    const pips = findPIPs(visibleData);
-                    pipSeries.setData(pips);
-                    
-                    // Add distinct markers to PIPs with Date and Price
-                    const markers = pips.map((p, idx) => {
-                        let isHigh;
-                        if (idx > 0 && idx < pips.length - 1) {
-                            isHigh = p.value > pips[idx-1].value && p.value > pips[idx+1].value;
-                        } else if (idx === 0 && pips.length > 1) {
-                            isHigh = p.value > pips[1].value;
-                        } else if (idx === pips.length - 1 && pips.length > 1) {
-                            isHigh = p.value > pips[idx-1].value;
-                        } else {
-                            isHigh = true;
-                        }
-                        return {
-                            time: p.time,
-                            position: isHigh ? 'aboveBar' : 'belowBar',
-                            color: isHigh ? '#ef4444' : '#10b981', // Red for peak, Green for trough
-                            shape: isHigh ? 'arrowDown' : 'arrowUp'
-                        };
-                    });
-                    currentPipMarkers = markers;
-                    createSeriesMarkers(candlestickSeries, markers);
-                }
-            } catch (e) {
-                console.error("ERROR IN PIP MARKERS:", e);
-            }
+            refreshPipAnalysis(logicalRange, data);
         }, CHART_UPDATE_DEBOUNCE_MS);
     });
     
@@ -2104,6 +2073,97 @@ function renderTradingViewChart(data) {
 }
 
 // --- Calculations ---
+function calculateMA(candles, period) {
+    if (candles.length < period) return 0;
+    const slice = candles.slice(-period);
+    return slice.reduce((sum, c) => sum + c.close, 0) / period;
+}
+
+// --- Unified Analysis Refresh ---
+function refreshPipAnalysis(logicalRange, allData) {
+    if (!logicalRange || !allData || allData.length === 0) return;
+    
+    try {
+        const startIdx = Math.max(0, Math.floor(logicalRange.from));
+        const endIdx = Math.min(allData.length - 1, Math.ceil(logicalRange.to));
+        
+        if (endIdx - startIdx <= 5) return;
+        
+        const visibleData = allData.slice(startIdx, endIdx + 1);
+        const pips = findPIPs(visibleData);
+        
+        // 1. Update Main Overlay (if enabled)
+        if (isPipOverlayEnabled && pipSeries) {
+            pipSeries.setData(pips);
+            const markers = pips.map((p, idx) => {
+                let isHigh;
+                if (idx > 0 && idx < pips.length - 1) {
+                    isHigh = p.value > pips[idx-1].value && p.value > pips[idx+1].value;
+                } else if (idx === 0 && pips.length > 1) {
+                    isHigh = p.value > pips[1].value;
+                } else if (idx === pips.length - 1 && pips.length > 1) {
+                    isHigh = p.value > pips[idx-1].value;
+                } else { isHigh = true; }
+                return {
+                    time: p.time,
+                    position: isHigh ? 'aboveBar' : 'belowBar',
+                    color: isHigh ? '#ef4444' : '#10b981',
+                    shape: isHigh ? 'arrowDown' : 'arrowUp'
+                };
+            });
+            currentPipMarkers = markers;
+            createSeriesMarkers(candlestickSeries, markers);
+        }
+        
+        // 2. Update Tactical Panel (if enabled)
+        if (isPipTacticalEnabled && pipChartInstance) {
+            if (pipLineSeries) pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.value })));
+            
+            const signal = generatePIPSignal(visibleData, pips);
+            const patternLabel = document.getElementById('pip-pattern-label');
+            
+            if (signal.patterns && signal.patterns.length > 0) {
+                const p = signal.patterns[0];
+                patternLabel.textContent = `PATTERN: ${p.name}`;
+                patternLabel.style.display = 'block';
+                patternLabel.style.background = `${p.color}33`;
+                patternLabel.style.color = p.color;
+                patternLabel.style.borderColor = `${p.color}4d`;
+                renderPatternGeometry(p, pips, pipChartInstance);
+            } else {
+                patternLabel.style.display = 'none';
+                if (patternUpperSeries) patternUpperSeries.setData([]);
+                if (patternLowerSeries) patternLowerSeries.setData([]);
+            }
+            
+            renderStructureLabels(pips, pipChartInstance);
+            updateProbabilityUI(signal.probability);
+        }
+    } catch (e) {
+        console.error("Refresh PIP Analysis Failed:", e);
+    }
+}
+
+function updateProbabilityUI(prob) {
+    const probContainer = document.getElementById('tactical-probability');
+    if (!probContainer) return;
+    
+    probContainer.innerHTML = `
+        <div class="prob-header">
+            <span>Forecast Confidence</span>
+            <span class="prob-val ${prob.bullish >= 50 ? 'bull' : 'bear'}">${Math.max(prob.bullish, prob.bearish)}%</span>
+        </div>
+        <div class="prob-bar-bg">
+            <div class="prob-bar-fill bull" style="width: ${prob.bullish}%"></div>
+            <div class="prob-bar-fill bear" style="width: ${prob.bearish}%"></div>
+        </div>
+        <div class="prob-footer">
+            <span class="bull-label">BULL ${prob.bullish}%</span>
+            <span class="bear-label">BEAR ${prob.bearish}%</span>
+        </div>
+    `;
+}
+
 function calcSMA(data, period) {
     const result = [];
     for (let i = period - 1; i < data.length; i++) {
@@ -2593,12 +2653,15 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
         patternUpperSeries.setData([{ time: p1.time, value: p1.value }, { time: p2.time, value: p2.value }]);
         patternLowerSeries.setData([{ time: t1.time, value: t1.value }, { time: t2.time, value: t2.value }]);
     } else if (pattern.type.includes('DOUBLE')) {
-        // For M/W, just highlight the peaks/troughs for now or connect them
         const points = pattern.points.sort((a, b) => a.index - b.index);
         if (points.length >= 2) {
             patternUpperSeries.setData(points.map(p => ({ time: p.time, value: p.value })));
-            patternLowerSeries.setData([]); // Not used for double patterns
+            patternLowerSeries.setData([]);
         }
+    } else if (pattern.type === 'HEAD_AND_SHOULDERS' || pattern.type === 'INVERTED_HS' || pattern.type === 'TRIPLE_TOP' || pattern.type === 'TRIPLE_BOTTOM') {
+        const points = pattern.points.sort((a, b) => a.index - b.index);
+        patternUpperSeries.setData(points.map(p => ({ time: p.time, value: p.value })));
+        patternLowerSeries.setData([]);
     }
 }
 
