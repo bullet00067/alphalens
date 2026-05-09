@@ -5,6 +5,17 @@
 
 const PIP_MAX_ITERATIONS = 150;
 
+/**
+ * Strategy Configuration Thresholds
+ */
+export const STRATEGY_CONFIG = {
+    TRIANGLE_TOLERANCE: 0.0005,      // 0.05% per bar
+    RECTANGLE_TOLERANCE: 0.0005,     // 0.05% per bar
+    DOUBLE_PATTERN_TOLERANCE: 0.015, // 1.5% price difference
+    HS_PATTERN_TOLERANCE: 0.02,      // 2% price difference
+    TRIPLE_PATTERN_TOLERANCE: 0.015  // 1.5% price difference
+};
+
 // Memoization cache for PIP calculations
 const pipCache = new Map();
 const patternCache = new Map();
@@ -289,7 +300,10 @@ export function evaluateExit(candles, pips, position) {
     return null;
 }
 
-function calculateMA(candles, period) {
+/**
+ * Calculate Moving Average
+ */
+export function calculateMA(candles, period) {
     if (candles.length < period) return 0;
     const slice = candles.slice(-period);
     return slice.reduce((sum, c) => sum + c.close, 0) / period;
@@ -355,10 +369,9 @@ function checkTriangle(peaks, troughs) {
     const sUpper = calculateSlope(p1, p2);
     const sLower = calculateSlope(t1, t2);
     
-    // Normalize slopes by price level for better comparison
     const normUpper = sUpper / p1.value;
     const normLower = sLower / t1.value;
-    const tol = 0.0005; // 0.05% per bar tolerance
+    const tol = STRATEGY_CONFIG.TRIANGLE_TOLERANCE;
 
     // Ascending Triangle: Flat top, rising bottom
     if (Math.abs(normUpper) < tol && normLower > tol) {
@@ -398,7 +411,7 @@ function checkRectangle(peaks, troughs) {
     
     const normUpper = sUpper / p1.value;
     const normLower = sLower / t1.value;
-    const tol = 0.0005; // 0.05% per bar tolerance
+    const tol = STRATEGY_CONFIG.RECTANGLE_TOLERANCE;
 
     // Rectangle: Flat top, flat bottom
     if (Math.abs(normUpper) < tol && Math.abs(normLower) < tol) {
@@ -413,7 +426,7 @@ function checkRectangle(peaks, troughs) {
  * Logic for Double Top/Bottom (M/W)
  */
 function checkDoublePattern(peaks, troughs) {
-    const tol = 0.015; // 1.5% price difference tolerance
+    const tol = STRATEGY_CONFIG.DOUBLE_PATTERN_TOLERANCE;
     
     // Double Bottom (W)
     if (troughs.length >= 2) {
@@ -448,7 +461,7 @@ function checkDoublePattern(peaks, troughs) {
 }
 
 function checkHeadAndShoulders(peaks, troughs) {
-    const tol = 0.02;
+    const tol = STRATEGY_CONFIG.HS_PATTERN_TOLERANCE;
     if (peaks.length >= 3) {
         const p1 = peaks[peaks.length - 3];
         const p2 = peaks[peaks.length - 2];
@@ -479,7 +492,7 @@ function checkHeadAndShoulders(peaks, troughs) {
 }
 
 function checkTriplePattern(peaks, troughs) {
-    const tol = 0.015;
+    const tol = STRATEGY_CONFIG.TRIPLE_PATTERN_TOLERANCE;
     if (peaks.length >= 3) {
         const p1 = peaks[peaks.length - 3];
         const p2 = peaks[peaks.length - 2];

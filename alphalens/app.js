@@ -6,13 +6,13 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChang
 import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, updateDoc } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAz5NDBefbtYQG9k7SHuaSwbGuGv54S-fM",
-  authDomain: "bulletstock-71dcf.firebaseapp.com",
-  projectId: "bulletstock-71dcf",
-  storageBucket: "bulletstock-71dcf.firebasestorage.app",
-  messagingSenderId: "108669191427",
-  appId: "1:108669191427:web:e3c85d99969b1d45d39536",
-  measurementId: "G-WZK0MKVB98"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
 };
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -71,15 +71,24 @@ async function fetchWithProxy(url) {
         }
     }
 
-    // Since we are using relative paths (/twse, /finmind), we don't need a public CORS proxy anymore
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-    
-    const data = await res.json();
-    
-    // Save to cache
-    apiCache.set(url, { data, time: Date.now() });
-    return data;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+        
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("Received non-JSON response from server");
+        }
+
+        const data = await res.json();
+        
+        // Save to cache
+        apiCache.set(url, { data, time: Date.now() });
+        return data;
+    } catch (error) {
+        console.error(`Error fetching ${url}:`, error);
+        throw error;
+    }
 }
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVEDATA_BASE = 'https://api.twelvedata.com';
@@ -102,17 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTimeframeSwitcher();
     initPortfolio();
     initResponsiveNavigation();
-    
-    // Expose functions for inline onclick handlers (must be after function definitions)
-    window.loadStockDetail = loadStockDetail;
-    window.removeFromWatchlist = removeFromWatchlist;
-    window.removeFromPortfolio = removeFromPortfolio;
-    window.addToPortfolioFromForm = addToPortfolioFromForm;
-    window.signInWithGoogle = signInWithGoogle;
-    window.signOutUser = signOutUser;
-    window.setMarketTab = setMarketTab;
-    window.switchPortfolioTab = switchPortfolioTab;
-    window.removeFromObservation = removeFromObservation;
+    initGlobalEventListeners();
     
     document.getElementById('ask-ai-banner-btn').addEventListener('click', () => {
         switchView('assistant-view');
@@ -125,6 +124,66 @@ document.addEventListener('DOMContentLoaded', () => {
         addAiMessage(`Let's take a deep dive into ${ticker}. You can ask me to draw technical indicators like "Draw 20 MA" or "Draw 5 MA".`);
     });
 });
+
+function initGlobalEventListeners() {
+    // Market Tab switching
+    document.querySelectorAll('[data-market-tab]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tab = e.currentTarget.getAttribute('data-market-tab');
+            setMarketTab(tab);
+        });
+    });
+
+    // Portfolio Tab switching
+    document.querySelectorAll('[data-portfolio-tab]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tab = e.currentTarget.getAttribute('data-portfolio-tab');
+            switchPortfolioTab(tab);
+        });
+    });
+
+    // Add Holding toggle
+    document.querySelectorAll('[data-action="toggle-add-form"]').forEach(el => {
+        el.addEventListener('click', toggleAddForm);
+    });
+
+    // Add Holding submit
+    const addHoldingBtn = document.getElementById('add-holding-submit-btn');
+    if (addHoldingBtn) {
+        addHoldingBtn.addEventListener('click', addToPortfolioFromForm);
+    }
+
+    // Event Delegation for dynamic elements
+    document.body.addEventListener('click', (e) => {
+        const target = e.target;
+        
+        // Find closest element with data-action
+        const actionEl = target.closest('[data-action]');
+        if (!actionEl) return;
+
+        const action = actionEl.getAttribute('data-action');
+        const ticker = actionEl.getAttribute('data-ticker');
+        const index = actionEl.getAttribute('data-index');
+
+        switch (action) {
+            case 'view-detail':
+                if (ticker) loadStockDetail(ticker);
+                break;
+            case 'remove-observation':
+                if (ticker) removeFromObservation(ticker);
+                break;
+            case 'remove-portfolio':
+                if (index !== null) removeFromPortfolio(parseInt(index), e);
+                break;
+            case 'remove-watchlist':
+                if (ticker) removeFromWatchlist(ticker, e);
+                break;
+            case 'add-observation':
+                if (ticker) addToObservation(ticker);
+                break;
+        }
+    });
+}
 
 // Settings Logic - show status of .env keys
 function initSettings() {
@@ -188,12 +247,12 @@ function initResponsiveNavigation() {
 }
 
 // Ensure toggleAddForm is truly global and functional
-window.toggleAddForm = function() {
+function toggleAddForm() {
     const panel = document.getElementById('add-holding-panel');
     if (panel) {
         panel.classList.toggle('expanded');
     }
-};
+}
 
 function switchView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active-view'));
@@ -423,12 +482,14 @@ function updateObservationButton(ticker) {
     const isObserved = observationList.some(o => o.ticker === ticker);
     if (isObserved) {
         btn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> Remove Observation`;
-        btn.onclick = () => removeFromObservation(ticker);
+        btn.setAttribute('data-action', 'remove-observation');
+        btn.setAttribute('data-ticker', ticker);
         btn.classList.add('ghost-btn-danger');
         btn.classList.remove('secondary-btn');
     } else {
         btn.innerHTML = `<i class="fa-solid fa-eye"></i> Add to Observation`;
-        btn.onclick = () => addToObservation(ticker);
+        btn.setAttribute('data-action', 'add-observation');
+        btn.setAttribute('data-ticker', ticker);
         btn.classList.remove('ghost-btn-danger');
         btn.classList.add('secondary-btn');
     }
@@ -482,7 +543,7 @@ function showActionNotification(ticker, text) {
             <span class="ticker-badge">${ticker}</span>
             <span style="font-weight: 600; color: #22c55e;">${text}</span>
         </div>
-        <button class="primary-btn" style="padding: 6px 12px; font-size: 0.8em;" onclick="loadStockDetail('${ticker}')">View Chart</button>
+        <button class="primary-btn" style="padding: 6px 12px; font-size: 0.8em;" data-action="view-detail" data-ticker="${ticker}">View Chart</button>
     `;
     list.appendChild(item);
 }
@@ -627,11 +688,9 @@ async function renderObservationList() {
 
     for (const obs of observationList) {
         const row = document.createElement('tr');
-        row.style.cursor = 'pointer';
-        row.onclick = (e) => {
-            if (e.target.closest('button')) return;
-            loadStockDetail(obs.ticker);
-        };
+        row.classList.add('clickable-row');
+        row.setAttribute('data-ticker', ticker);
+        row.setAttribute('data-action', 'view-detail');
 
         const ticker = obs.ticker;
         row.innerHTML = `
@@ -641,7 +700,7 @@ async function renderObservationList() {
             <td data-label="Signal" id="obs-signal-${ticker}" style="text-align: center;">...</td>
             <td data-label="Confidence" id="obs-conf-${ticker}" style="text-align: center;">...</td>
             <td data-label="Action" style="text-align: center;">
-                <button class="ghost-btn-danger" onclick="removeFromObservation('${ticker}')" title="Stop Observing">
+                <button class="ghost-btn-danger" data-action="remove-observation" data-ticker="${ticker}" title="Stop Observing">
                     <i class="fa-solid fa-eye-slash"></i>
                 </button>
             </td>
@@ -855,13 +914,11 @@ async function renderPortfolio() {
                 <div style="font-size: 0.85em; opacity: 0.8; margin-top: 2px;">${plPercent.toFixed(2)}%</div>
             </td>
             <td data-label="Signal" id="port-sig-${index}" style="padding: 16px 12px; text-align: center;"><i class="fa-solid fa-spinner fa-spin" style="color: var(--text-secondary);"></i></td>
-            <td data-label="Action" style="padding: 16px 12px; text-align: center;"><button class="ghost-btn-danger" aria-label="Delete Holding" title="Delete Holding" onclick="removeFromPortfolio(${index}, event)"><i class="fa-solid fa-trash"></i></button></td>
+            <td data-label="Action" style="padding: 16px 12px; text-align: center;"><button class="ghost-btn-danger" aria-label="Delete Holding" title="Delete Holding" data-action="remove-portfolio" data-index="${index}"><i class="fa-solid fa-trash"></i></button></td>
         `;
-        row.style.cursor = 'pointer';
-        row.onclick = (e) => {
-            if (e.target.closest('button')) return;
-            loadStockDetail(item.ticker);
-        };
+        row.classList.add('clickable-row');
+        row.setAttribute('data-action', 'view-detail');
+        row.setAttribute('data-ticker', item.ticker);
         tableBody.appendChild(row);
         
         // Asynchronously evaluate PIP signal
@@ -1185,7 +1242,7 @@ async function populateDashboard() {
     ];
     
     document.querySelector('.indices-grid').innerHTML = marketIndices.map(index => `
-        <div class="index-card glass-panel" onclick="loadStockDetail('${index.ticker}')" style="cursor: pointer;">
+        <div class="index-card glass-panel clickable-card" data-action="view-detail" data-ticker="${index.ticker}">
             <div class="index-header"><span>${index.name}</span><i class="fa-solid fa-arrow-trend-${index.isPositive ? 'up' : 'down'} ${index.isPositive ? 'positive' : 'negative'}"></i></div>
             <div class="index-price">${index.price}</div>
             <div class="index-change ${index.isPositive ? 'positive' : 'negative'}">${index.change}</div>
@@ -1255,10 +1312,10 @@ async function populateDashboard() {
         const priceStr = typeof price === 'number' ? formatCurrency(price, ticker) : price;
 
         html += `
-            <li class="stock-item" onclick="loadStockDetail('${ticker}')">
+            <li class="stock-item clickable-item" data-action="view-detail" data-ticker="${ticker}">
                 <div class="stock-info"><strong>${name}</strong><span>${isTaiwanStock(ticker) ? 'TWSE' : 'US'}</span></div>
                 <div class="stock-price-col"><strong>${priceStr}</strong><span class="${isPositive ? 'positive' : 'negative'}">${change}</span></div>
-                <button class="delete-stock-btn" onclick="removeFromWatchlist('${ticker}', event)"><i class="fa-solid fa-trash"></i></button>
+                <button class="delete-stock-btn" data-action="remove-watchlist" data-ticker="${ticker}"><i class="fa-solid fa-trash"></i></button>
             </li>
         `;
     }

@@ -83,9 +83,9 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                             <h3 style="margin: 0;">My Watchlist</h3>
                             <div class="market-tabs" id="watchlist-tabs" style="display: flex; gap: 8px;">
-                                <button class="tab-btn active" onclick="setMarketTab('ALL')">All</button>
-                                <button class="tab-btn" onclick="setMarketTab('US')">US</button>
-                                <button class="tab-btn" onclick="setMarketTab('TW')">TW</button>
+                                <button class="tab-btn active" data-market-tab="ALL">All</button>
+                                <button class="tab-btn" data-market-tab="US">US</button>
+                                <button class="tab-btn" data-market-tab="TW">TW</button>
                             </div>
                         </div>
                         <div class="input-group" style="margin-bottom: 16px; margin-top: 0;">
@@ -116,10 +116,10 @@
 
                 <!-- Portfolio Views Toggles (Holdings vs Observations) -->
                 <div class="view-toggles" style="display: flex; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-                    <button class="toggle-btn active" onclick="switchPortfolioTab('HOLDINGS')" id="tab-holdings">
+                    <button class="toggle-btn active" data-portfolio-tab="HOLDINGS" id="tab-holdings">
                         Current Holdings
                     </button>
-                    <button class="toggle-btn" onclick="switchPortfolioTab('OBSERVATIONS')" id="tab-observations">
+                    <button class="toggle-btn" data-portfolio-tab="OBSERVATIONS" id="tab-observations">
                         Observation List
                     </button>
                 </div>
@@ -132,7 +132,7 @@
                 <div class="portfolio-grid">
                     <!-- Add to Portfolio Form -->
                     <div class="glass-panel collapsible-panel" id="add-holding-panel" style="padding: 24px;">
-                        <div class="panel-header" onclick="toggleAddForm()" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div class="panel-header" data-action="toggle-add-form" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                             <h3 style="margin-bottom: 0;">Add New Holding</h3>
                             <i class="fa-solid fa-chevron-down" id="add-form-chevron" style="transition: transform 0.3s;"></i>
                         </div>
@@ -151,7 +151,7 @@
                                 <input type="number" id="port-qty" class="form-input" placeholder="0">
                             </div>
                         </div>
-                        <button class="primary-btn" style="width: 100%; justify-content: center;" onclick="addToPortfolioFromForm(event)">
+                        <button id="add-holding-submit-btn" class="primary-btn" style="width: 100%; justify-content: center;">
                             <i class="fa-solid fa-plus"></i> Add Holding
                         </button>
                         </div>
@@ -162,9 +162,9 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                             <h3 style="margin: 0;">Portfolio Assets</h3>
                             <div class="market-tabs" id="portfolio-tabs" style="display: flex; gap: 8px;">
-                                <button class="tab-btn active" onclick="setMarketTab('ALL')">All</button>
-                                <button class="tab-btn" onclick="setMarketTab('US')">US</button>
-                                <button class="tab-btn" onclick="setMarketTab('TW')">TW</button>
+                                <button class="tab-btn active" data-market-tab="ALL">All</button>
+                                <button class="tab-btn" data-market-tab="US">US</button>
+                                <button class="tab-btn" data-market-tab="TW">TW</button>
                             </div>
                         </div>
                         <div class="table-responsive">
