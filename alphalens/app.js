@@ -41,6 +41,7 @@ let isPipOverlayEnabled = false;
 let mainPipSeries = null;
 let patternOverlaySeries = null; // For Triangle/MW legs in tactical chart
 let structureLabelSeries = null; // For HH/HL markers
+let patternLabelSeries = null; // For Resistance/Support markers
 let patternUpperSeries = null;
 let patternLowerSeries = null;
 let pipGhostSeries = null; // Transparent series to force time-scale alignment
@@ -2374,7 +2375,7 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
         patternLowerSeries.applyOptions({ color: pattern.color });
     }
 
-    if (pattern.type.includes('TRIANGLE')) {
+    if (pattern.type.includes('TRIANGLE') || pattern.type === 'RECTANGLE') {
         const p1 = pattern.points[0]; const p2 = pattern.points[1];
         const t1 = pattern.points[2]; const t2 = pattern.points[3];
         
@@ -2449,6 +2450,46 @@ function renderStructureLabels(pips, chartInstance) {
     }
 }
 
+function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
+    if (!pattern || !chartInstance || !patternLabelSeries) return;
+    
+    const markers = [];
+    
+    if (pattern.points.length >= 4) {
+        const p1 = pattern.points[0]; const p2 = pattern.points[1];
+        const t1 = pattern.points[2]; const t2 = pattern.points[3];
+        
+        // Add Resistance/Support labels
+        if (pattern.type === 'RECTANGLE') {
+            markers.push({ time: p2.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '阻力 RESISTANCE', size: 1 });
+            markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '支撐 SUPPORT', size: 1 });
+        } else if (pattern.type === 'ASCENDING_TRIANGLE') {
+            markers.push({ time: p2.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '阻力 RESISTANCE', size: 1 });
+            markers.push({ time: t1.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '較高的低點 HIGHER LOWS', size: 1 });
+            markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '較高的低點 HIGHER LOWS', size: 1 });
+        } else if (pattern.type === 'DESCENDING_TRIANGLE') {
+            markers.push({ time: p1.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '較低的高點 LOWER HIGHS', size: 1 });
+            markers.push({ time: p2.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '較低的高點 LOWER HIGHS', size: 1 });
+            markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '支撐 SUPPORT', size: 1 });
+        }
+    }
+
+    // Add Breakout label if there is a signal
+    if (tacticalSignal.signal !== 'NEUTRAL' && tacticalSignal.details && tacticalSignal.details.reason && tacticalSignal.details.reason.includes('BREAKOUT')) {
+        const lastCandle = candles[candles.length - 1];
+        markers.push({
+            time: lastCandle.time,
+            position: tacticalSignal.signal === 'BUY' ? 'belowBar' : 'aboveBar',
+            color: tacticalSignal.color,
+            shape: tacticalSignal.signal === 'BUY' ? 'arrowUp' : 'arrowDown',
+            text: '突破 BREAKOUT',
+            size: 2
+        });
+    }
+
+    createSeriesMarkers(patternLabelSeries, markers);
+}
+
 // --- Charting Modules ---
 function renderTacticalChart(candles) {
     if (!isPipTacticalEnabled || !candles || candles.length === 0) {
@@ -2501,6 +2542,12 @@ function renderTacticalChart(candles) {
     });
 
     structureLabelSeries = pipChartInstance.addSeries(LineSeries, {
+        visible: false,
+        priceLineVisible: false,
+        lastValueVisible: false
+    });
+
+    patternLabelSeries = pipChartInstance.addSeries(LineSeries, {
         visible: false,
         priceLineVisible: false,
         lastValueVisible: false
@@ -2571,6 +2618,7 @@ function renderTacticalChart(candles) {
         patternLabel.style.color = p.color;
         patternLabel.style.borderColor = `${p.color}4d`;
         renderPatternGeometry(p, pips, pipChartInstance);
+        renderPatternLabels(p, tacticalSignal, candles, pipChartInstance);
     } else {
         patternLabel.style.display = 'none';
     }

@@ -319,6 +319,10 @@ export function identifyPatterns(pips, useCache = true) {
     const triangle = checkTriangle(peaks, troughs);
     if (triangle) patterns.push(triangle);
 
+    // 1.5 Check for Rectangle
+    const rectangle = checkRectangle(peaks, troughs);
+    if (rectangle) patterns.push(rectangle);
+
     // 2. Check for Double Patterns (M/W)
     const doublePattern = checkDoublePattern(peaks, troughs);
     if (doublePattern) patterns.push(doublePattern);
@@ -372,6 +376,34 @@ function checkTriangle(peaks, troughs) {
     if (normUpper < -tol && normLower > tol) {
         const height = p1.value - t1.value;
         return { type: 'SYMMETRICAL_TRIANGLE', name: '對稱三角', color: '#eab308', points: [p1, p2, t1, t2], height };
+    }
+    
+    
+    return null;
+}
+
+/**
+ * Logic for Rectangle pattern
+ */
+function checkRectangle(peaks, troughs) {
+    if (peaks.length < 2 || troughs.length < 2) return null;
+    
+    const p1 = peaks[peaks.length - 2];
+    const p2 = peaks[peaks.length - 1];
+    const t1 = troughs[troughs.length - 2];
+    const t2 = troughs[troughs.length - 1];
+    
+    const sUpper = calculateSlope(p1, p2);
+    const sLower = calculateSlope(t1, t2);
+    
+    const normUpper = sUpper / p1.value;
+    const normLower = sLower / t1.value;
+    const tol = 0.0005; // 0.05% per bar tolerance
+
+    // Rectangle: Flat top, flat bottom
+    if (Math.abs(normUpper) < tol && Math.abs(normLower) < tol) {
+        const height = p1.value - t1.value;
+        return { type: 'RECTANGLE', name: '矩形區間', color: '#3b82f6', points: [p1, p2, t1, t2], height };
     }
     
     return null;
@@ -497,7 +529,7 @@ export function calculateProbability(signal, trend, candles) {
     // 4. Pattern Impact (20%)
     if (signal.patterns && signal.patterns.length > 0) {
         const p = signal.patterns[0];
-        if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'SYMMETRICAL_TRIANGLE'].includes(p.type)) score += 10;
+        if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'SYMMETRICAL_TRIANGLE', 'RECTANGLE'].includes(p.type)) score += 10;
         if (['DESCENDING_TRIANGLE', 'DOUBLE_TOP'].includes(p.type)) score -= 10;
     }
 
@@ -533,8 +565,8 @@ export function generatePIPSignal(candles, providedPips = null) {
         const last = candles[candles.length - 1];
         const prev = candles[candles.length - 2];
         
-        // 1. Triangle Breakout
-        if (p.type.includes('TRIANGLE')) {
+        // 1. Triangle or Rectangle Breakout
+        if (p.type.includes('TRIANGLE') || p.type === 'RECTANGLE') {
             const p1 = p.points[0]; const p2 = p.points[1];
             const t1 = p.points[2]; const t2 = p.points[3];
             const upperVal = p1.value + calculateSlope(p1, p2) * (candles.length - 1 - p1.index);
