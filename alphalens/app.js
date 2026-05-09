@@ -1609,10 +1609,6 @@ async function loadChartData(ticker, tf) {
         renderTradingViewChart(candles);
         renderTacticalChart(candles);
         updateAISignals(ticker, candles);
-    } else {
-        const signalCard = document.getElementById('ai-signal-card');
-        if (signalCard) signalCard.style.display = 'none';
-    }
     } catch (err) {
         const isQuotaError = err.message.includes('402') || (err instanceof Response && err.status === 402);
         const isRateLimitError = err.message.includes('429') || (err instanceof Response && err.status === 429);
@@ -2607,9 +2603,12 @@ function renderTacticalChart(candles) {
 }
 
 function updateAISignals(ticker, candles) {
-    if (!candles || candles.length === 0) return;
-    const signals = calculateAISignals(ticker, candles);
     const signalCard = document.getElementById('ai-signal-card');
+    if (!candles || candles.length === 0) {
+        if (signalCard) signalCard.style.display = 'none';
+        return;
+    }
+    const signals = calculateAISignals(ticker, candles);
     if (!signalCard) return;
 
     if (signals) {
