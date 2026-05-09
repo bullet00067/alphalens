@@ -43,6 +43,7 @@ let patternOverlaySeries = null; // For Triangle/MW legs in tactical chart
 let structureLabelSeries = null; // For HH/HL markers
 let patternUpperSeries = null;
 let patternLowerSeries = null;
+let pipGhostSeries = null; // Transparent series to force time-scale alignment
 
 // API Keys (from .env via Vite)
 const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
@@ -1657,6 +1658,15 @@ async function loadChartData(ticker, tf) {
                 lastValueVisible: false
             });
 
+            // Ghost series to ensure 1:1 time alignment with main chart
+            pipGhostSeries = pipChartInstance.addSeries(LineSeries, {
+                visible: false,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false
+            });
+            pipGhostSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+
             const pips = findPIPs(candles);
             pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.value })));
             
@@ -1686,6 +1696,16 @@ async function loadChartData(ticker, tf) {
                         currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries);
                     }
                 });
+            }
+
+            // Initial range sync
+            if (currentStockChart) {
+                const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
+                if (mainRange) {
+                    setTimeout(() => {
+                        if (pipChartInstance) pipChartInstance.timeScale().setVisibleLogicalRange(mainRange);
+                    }, 100);
+                }
             }
 
             const tacticalSignal = typeof generatePIPSignal === 'function' ? generatePIPSignal(candles) : { patterns: [], probability: { bullish: 50, bearish: 50 } };
