@@ -100,6 +100,7 @@ let currentTp2Line = null;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
+    initGlobalEventListeners();
     initAuth();
     initNavigation();
     initSettings();
@@ -111,7 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initTimeframeSwitcher();
     initPortfolio();
     initResponsiveNavigation();
-    initGlobalEventListeners();
     
     document.getElementById('ask-ai-banner-btn').addEventListener('click', () => {
         switchView('assistant-view');
