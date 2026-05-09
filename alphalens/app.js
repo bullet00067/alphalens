@@ -15,9 +15,22 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ""
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
-const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
+let firebaseApp = null;
+let auth = null;
+let db = null;
+
+try {
+    if (firebaseConfig.apiKey) {
+        firebaseApp = initializeApp(firebaseConfig);
+        auth = getAuth(firebaseApp);
+        db = getFirestore(firebaseApp);
+    } else {
+        console.warn("Firebase API Key missing. Firebase Auth/DB will be disabled.");
+    }
+} catch (e) {
+    console.error("Firebase Initialization Error:", e);
+}
+
 let currentUser = null;
 
 // State
@@ -373,37 +386,51 @@ function initAuth() {
     if (btnLogin) btnLogin.addEventListener('click', signInWithGoogle);
     if (btnLogout) btnLogout.addEventListener('click', signOutUser);
 
-    onAuthStateChanged(auth, async (user) => {
-        currentUser = user;
-        if (user) {
-            // Logged in
-            if (btnLogin) btnLogin.style.display = 'none';
-            if (userInfo) userInfo.style.display = 'flex';
-            if (btnLogout) btnLogout.style.display = 'flex';
-            if (userAvatar) userAvatar.src = user.photoURL || 'https://via.placeholder.com/32';
-            if (userName) userName.textContent = user.displayName || user.email;
-            
-            showToast(`Welcome, ${user.displayName || user.email}`);
-            await fetchCloudWatchlist(user.uid);
-            await fetchCloudPortfolio(user.uid);
-            await fetchObservationList();
-        } else {
-            // Logged out
-            if (btnLogin) btnLogin.style.display = 'flex';
-            if (userInfo) userInfo.style.display = 'none';
-            if (btnLogout) btnLogout.style.display = 'none';
-            
-            currentPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || [];
-            portfolioQuotes = {};
-            currentWatchlist = JSON.parse(localStorage.getItem('myWatchlist')) || defaultWatchlist;
-            renderPortfolio();
-            populateDashboard(); // Re-render watchlist
-            fetchPortfolioQuotes(); // Fetch quotes for local portfolio
-        }
-    });
+    if (auth) {
+        onAuthStateChanged(auth, async (user) => {
+            currentUser = user;
+            if (user) {
+                // Logged in
+                if (btnLogin) btnLogin.style.display = 'none';
+                if (userInfo) userInfo.style.display = 'flex';
+                if (btnLogout) btnLogout.style.display = 'flex';
+                if (userAvatar) userAvatar.src = user.photoURL || 'https://via.placeholder.com/32';
+                if (userName) userName.textContent = user.displayName || user.email;
+                
+                showToast(`Welcome, ${user.displayName || user.email}`);
+                await fetchCloudWatchlist(user.uid);
+                await fetchCloudPortfolio(user.uid);
+                await fetchObservationList();
+            } else {
+                // Logged out
+                if (btnLogin) btnLogin.style.display = 'flex';
+                if (userInfo) userInfo.style.display = 'none';
+                if (btnLogout) btnLogout.style.display = 'none';
+                
+                currentPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || [];
+                portfolioQuotes = {};
+                currentWatchlist = JSON.parse(localStorage.getItem('myWatchlist')) || defaultWatchlist;
+                renderPortfolio();
+                populateDashboard(); // Re-render watchlist
+                fetchPortfolioQuotes(); // Fetch quotes for local portfolio
+            }
+        });
+    } else {
+        console.warn("Firebase Auth disabled. Proceeding locally.");
+        currentPortfolio = JSON.parse(localStorage.getItem('myPortfolio')) || [];
+        portfolioQuotes = {};
+        currentWatchlist = JSON.parse(localStorage.getItem('myWatchlist')) || defaultWatchlist;
+        renderPortfolio();
+        populateDashboard();
+        fetchPortfolioQuotes();
+    }
 }
 
 async function signInWithGoogle() {
+    if (!auth) {
+        showToast("Login is disabled (Firebase missing).");
+        return;
+    }
     const provider = new GoogleAuthProvider();
     try {
         await signInWithPopup(auth, provider);
@@ -414,6 +441,7 @@ async function signInWithGoogle() {
 }
 
 async function signOutUser() {
+    if (!auth) return;
     try {
         await signOut(auth);
         showToast("Logged out successfully");
@@ -426,6 +454,7 @@ async function signOutUser() {
 let observationList = [];
 
 async function fetchObservationList() {
+    if (!auth || !db) return;
     const user = auth.currentUser;
     if (!user) return;
     try {
@@ -461,6 +490,7 @@ async function addToObservation(ticker) {
 }
 
 async function removeFromObservation(ticker) {
+    if (!auth || !db) return;
     const user = auth.currentUser;
     if (!user) return;
     try {
@@ -553,6 +583,7 @@ setInterval(runPreCloseScanner, 60000);
 
 // --- Cloud DB Logic ---
 async function fetchCloudPortfolio(uid) {
+    if (!db) return;
     try {
         const querySnapshot = await getDocs(collection(db, `users/${uid}/portfolio`));
         currentPortfolio = [];
@@ -574,6 +605,7 @@ async function fetchCloudPortfolio(uid) {
 }
 
 async function addCloudPortfolio(uid, ticker, cost, qty) {
+    if (!db) return;
     try {
         const newDocRef = doc(collection(db, `users/${uid}/portfolio`));
         const data = { ticker, cost, qty, date: new Date().toISOString() };
@@ -587,6 +619,7 @@ async function addCloudPortfolio(uid, ticker, cost, qty) {
 }
 
 async function updateCloudPortfolio(uid, docId, cost, qty) {
+    if (!db) return;
     try {
         const docRef = doc(db, `users/${uid}/portfolio`, docId);
         await updateDoc(docRef, { cost, qty });
@@ -610,6 +643,7 @@ async function removeCloudPortfolio(uid, index) {
 }
 
 async function fetchCloudWatchlist(uid) {
+    if (!db) return;
     try {
         const docRef = doc(db, `users/${uid}/settings`, 'watchlist');
         const docSnap = await getDocs(collection(db, `users/${uid}/settings`));
@@ -631,6 +665,7 @@ async function fetchCloudWatchlist(uid) {
 }
 
 async function saveCloudWatchlist(uid) {
+    if (!db) return;
     try {
         await setDoc(doc(db, `users/${uid}/settings`, 'watchlist'), { list: currentWatchlist });
     } catch (error) {
