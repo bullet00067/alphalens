@@ -1606,9 +1606,6 @@ async function loadChartData(ticker, tf) {
                 <span>${profile?.name || ticker} is currently trading at <strong>$${safeQuote.c.toFixed(2)}</strong>.</span>
             </div>
         `;
-        
-        renderTradingViewChart(candles);
-
         // Tactical Chart Logic
         if (isPipTacticalEnabled) {
             const pipContainer = document.getElementById('pipChart');
@@ -1643,22 +1640,20 @@ async function loadChartData(ticker, tf) {
                 crosshairMarkerVisible: true
             });
 
-            // New: Pattern legs and labels
             patternOverlaySeries = pipChartInstance.addSeries(LineSeries, {
                 lineWidth: 2,
-                lineStyle: 0, // Solid
+                lineStyle: 0,
                 priceLineVisible: false,
                 lastValueVisible: false,
                 crosshairMarkerVisible: false
             });
 
             structureLabelSeries = pipChartInstance.addSeries(LineSeries, {
-                visible: false, // Only used for markers
+                visible: false,
                 priceLineVisible: false,
                 lastValueVisible: false
             });
 
-            // Ghost series to ensure 1:1 time alignment with main chart
             pipGhostSeries = pipChartInstance.addSeries(LineSeries, {
                 visible: false,
                 priceLineVisible: false,
@@ -1667,24 +1662,35 @@ async function loadChartData(ticker, tf) {
             });
             pipGhostSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
 
-            // Initial PIP calculation will be handled by the sync logic below via refreshPipAnalysis
-            // but we do a baseline set here to avoid blank chart
             const initialPips = findPIPs(candles.slice(-60));
             pipLineSeries.setData(initialPips.map(p => ({ time: p.time, value: p.value })));
-            
+        }
+
+        renderTradingViewChart(candles);
+        
+        if (isPipTacticalEnabled && pipChartInstance) {
             // --- Sync Logic (Bidirectional Time & Crosshair) ---
             if (currentStockChart) {
-                // Sync Time Scale: Main -> PIP
+                // Sync Time Scale: Main -> PIP (with guard)
                 currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                    if (range) pipChartInstance.timeScale().setVisibleLogicalRange(range);
+                    if (!range || !pipChartInstance) return;
+                    const currentRange = pipChartInstance.timeScale().getVisibleLogicalRange();
+                    if (!areRangesEqual(range, currentRange)) {
+                        pipChartInstance.timeScale().setVisibleLogicalRange(range);
+                    }
                 });
-                // Sync Time Scale: PIP -> Main
+                // Sync Time Scale: PIP -> Main (with guard)
                 pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                    if (range) currentStockChart.timeScale().setVisibleLogicalRange(range);
+                    if (!range || !currentStockChart) return;
+                    const currentRange = currentStockChart.timeScale().getVisibleLogicalRange();
+                    if (!areRangesEqual(range, currentRange)) {
+                        currentStockChart.timeScale().setVisibleLogicalRange(range);
+                    }
                 });
 
                 // Sync Crosshair
                 currentStockChart.subscribeCrosshairMove(param => {
+                    if (!pipChartInstance || !pipLineSeries) return;
                     if (!param.time) {
                         pipChartInstance.clearCrosshairPosition();
                     } else {
@@ -1692,6 +1698,7 @@ async function loadChartData(ticker, tf) {
                     }
                 });
                 pipChartInstance.subscribeCrosshairMove(param => {
+                    if (!currentStockChart || !candlestickSeries) return;
                     if (!param.time) {
                         currentStockChart.clearCrosshairPosition();
                     } else {
@@ -1921,10 +1928,12 @@ function renderTradingViewChart(data) {
     currentStopLossLine = null;
     currentTp1Line = null;
     currentTp2Line = null;
-    patternUpperSeries = null;
-    patternLowerSeries = null;
 
     const chartContainer = document.getElementById('stockChart');
+    if (currentStockChart) {
+        try { currentStockChart.remove(); } catch(e) {}
+        currentStockChart = null;
+    }
     chartContainer.innerHTML = '';
     if (!data || data.length === 0) return;
 
@@ -2070,6 +2079,12 @@ function renderTradingViewChart(data) {
     volumeSeries = null;
     bollingerSeries = { upper: null, mid: null, lower: null };
     document.querySelectorAll('.indicator-btn').forEach(btn => btn.classList.remove('active'));
+}
+
+// --- Helper for Range Equality ---
+function areRangesEqual(r1, r2) {
+    if (!r1 || !r2) return false;
+    return Math.abs(r1.from - r2.from) < 0.05 && Math.abs(r1.to - r2.to) < 0.05;
 }
 
 // --- Calculations ---
