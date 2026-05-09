@@ -1606,290 +1606,9 @@ async function loadChartData(ticker, tf) {
                 <span>${profile?.name || ticker} is currently trading at <strong>$${safeQuote.c.toFixed(2)}</strong>.</span>
             </div>
         `;
-        // Tactical Chart Logic
-        if (isPipTacticalEnabled) {
-            const pipContainer = document.getElementById('pipChart');
-            const patternLabel = document.getElementById('pip-pattern-label');
-            
-            if (pipChartInstance) {
-                pipChartInstance.remove();
-            }
-
-            pipChartInstance = createChart(pipContainer, {
-                width: pipContainer.clientWidth,
-                height: 180,
-                layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
-                grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
-                timeScale: { 
-                    visible: true, 
-                    borderVisible: false,
-                    borderColor: 'rgba(255,255,255,0.1)'
-                },
-                rightPriceScale: { 
-                    borderVisible: false,
-                    minimumWidth: 80
-                },
-                crosshair: { mode: CrosshairMode.Normal }
-            });
-
-            pipLineSeries = pipChartInstance.addSeries(LineSeries, {
-                color: '#eab308',
-                lineWidth: 2,
-                priceLineVisible: false,
-                lastValueVisible: false,
-                crosshairMarkerVisible: true
-            });
-
-            patternOverlaySeries = pipChartInstance.addSeries(LineSeries, {
-                lineWidth: 2,
-                lineStyle: 0,
-                priceLineVisible: false,
-                lastValueVisible: false,
-                crosshairMarkerVisible: false
-            });
-
-            structureLabelSeries = pipChartInstance.addSeries(LineSeries, {
-                visible: false,
-                priceLineVisible: false,
-                lastValueVisible: false
-            });
-
-            pipGhostSeries = pipChartInstance.addSeries(LineSeries, {
-                visible: false,
-                priceLineVisible: false,
-                lastValueVisible: false,
-                crosshairMarkerVisible: false
-            });
-            pipGhostSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
-
-            const initialPips = findPIPs(candles.slice(-60));
-            pipLineSeries.setData(initialPips.map(p => ({ time: p.time, value: p.value })));
-        }
-
         renderTradingViewChart(candles);
-        
-        if (isPipTacticalEnabled && pipChartInstance) {
-            // --- Sync Logic (Bidirectional Time & Crosshair) ---
-            if (currentStockChart) {
-                // Sync Time Scale: Main -> PIP (with guard)
-                currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                    if (!range || !pipChartInstance) return;
-                    const currentRange = pipChartInstance.timeScale().getVisibleLogicalRange();
-                    if (!areRangesEqual(range, currentRange)) {
-                        pipChartInstance.timeScale().setVisibleLogicalRange(range);
-                    }
-                });
-                // Sync Time Scale: PIP -> Main (with guard)
-                pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                    if (!range || !currentStockChart) return;
-                    const currentRange = currentStockChart.timeScale().getVisibleLogicalRange();
-                    if (!areRangesEqual(range, currentRange)) {
-                        currentStockChart.timeScale().setVisibleLogicalRange(range);
-                    }
-                });
-
-                // Sync Crosshair
-                currentStockChart.subscribeCrosshairMove(param => {
-                    if (!pipChartInstance || !pipLineSeries) return;
-                    if (!param.time) {
-                        pipChartInstance.clearCrosshairPosition();
-                    } else {
-                        pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
-                    }
-                });
-                pipChartInstance.subscribeCrosshairMove(param => {
-                    if (!currentStockChart || !candlestickSeries) return;
-                    if (!param.time) {
-                        currentStockChart.clearCrosshairPosition();
-                    } else {
-                        currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries);
-                    }
-                });
-            }
-
-            // Initial range sync
-            if (currentStockChart) {
-                const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
-                if (mainRange) {
-                    setTimeout(() => {
-                        if (pipChartInstance) pipChartInstance.timeScale().setVisibleLogicalRange(mainRange);
-                    }, 100);
-                }
-            }
-
-            const tacticalSignal = typeof generatePIPSignal === 'function' ? generatePIPSignal(candles) : { patterns: [], probability: { bullish: 50, bearish: 50 } };
-            
-            // Update Pattern & Probability
-            if (tacticalSignal && tacticalSignal.patterns && tacticalSignal.patterns.length > 0) {
-                const p = tacticalSignal.patterns[0];
-                patternLabel.textContent = `PATTERN: ${p.name}`;
-                patternLabel.style.display = 'block';
-                patternLabel.style.background = `${p.color}33`;
-                patternLabel.style.color = p.color;
-                patternLabel.style.borderColor = `${p.color}4d`;
-                
-                // New: Draw pattern geometry
-                renderPatternGeometry(p, pips, pipChartInstance);
-            } else {
-                patternLabel.style.display = 'none';
-                if (patternUpperSeries) patternUpperSeries.setData([]);
-                if (patternLowerSeries) patternLowerSeries.setData([]);
-            }
-
-            // New: Draw structure labels
-            renderStructureLabels(pips, pipChartInstance);
-
-            // Display Probability
-            let probContainer = document.getElementById('tactical-probability');
-            if (!probContainer) {
-                probContainer = document.createElement('div');
-                probContainer.id = 'tactical-probability';
-                probContainer.className = 'probability-container';
-                patternLabel.parentNode.insertBefore(probContainer, patternLabel.nextSibling);
-            }
-
-            const prob = tacticalSignal.probability || { bullish: 50, bearish: 50 };
-            probContainer.innerHTML = `
-                <div class="prob-header">
-                    <span>Forecast Confidence</span>
-                    <span class="prob-val ${prob.bullish >= 50 ? 'bull' : 'bear'}">${Math.max(prob.bullish, prob.bearish)}%</span>
-                </div>
-                <div class="prob-bar-bg">
-                    <div class="prob-bar-fill bull" style="width: ${prob.bullish}%"></div>
-                    <div class="prob-bar-fill bear" style="width: ${prob.bearish}%"></div>
-                </div>
-                <div class="prob-footer">
-                    <span class="bull-label">BULL ${prob.bullish}%</span>
-                    <span class="bear-label">BEAR ${prob.bearish}%</span>
-                </div>
-            `;
-        }
-
-        // Show AI Signal Card
-        if (candles.length > 0) {
-            const signals = calculateAISignals(ticker, candles);
-            const signalCard = document.getElementById('ai-signal-card');
-            if (signals) {
-                signalCard.style.display = 'block';
-            const sig = signals.signal;
-            const trend = signals.trend;
-            
-            signalCard.innerHTML = `
-                <div class="glass-panel strategy-card" style="border-left: 4px solid ${sig.color};">
-                    <div class="strategy-header">
-                        <h3 class="strategy-title">
-                            <i class="fa-solid fa-robot"></i> AI Strategy: <span style="color: ${sig.color}">${sig.text}</span>
-                        </h3>
-                        <span class="badge strategy-badge">${trend.status}</span>
-                    </div>
-                    
-                    <div class="strategy-grid">
-                        <div class="stat-item">
-                            <span class="stat-label">Stop Loss (PIP/ATR)</span>
-                            <span class="stat-value negative">$${signals.stopLoss}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Target 1 (1:2)</span>
-                            <span class="stat-value positive">$${signals.tp1}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Target 2 (1:3)</span>
-                            <span class="stat-value positive">$${signals.tp2}</span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Confidence</span>
-                            <span class="stat-value" style="color: var(--accent-primary);">${Math.round((sig.confidence || 0) * 100)}%</span>
-                        </div>
-                    </div>
-
-                    <div class="strategy-analysis">
-                        <strong><i class="fa-solid fa-circle-info"></i> Analysis:</strong><br>
-                        PIP trend is ${trend.status.toLowerCase()}. 
-                        ${trend.status === 'BULLISH' ? 'Strong higher-peaks/higher-troughs structure detected.' : ''}
-                        ${trend.status === 'CONSOLIDATION' ? 'Price is oscillating within a tight range (neckline identification active).' : ''}
-                        ${sig.signal === 'BUY' ? `Signal triggered by ${sig.details.reason}. Target entries at current level.` : 'Waiting for optimal entry setup.'}
-                    </div>
-                </div>
-            `;
-
-            if (signals && candlestickSeries) {
-                // Add new price lines
-                currentStopLossLine = candlestickSeries.createPriceLine({
-                    price: parseFloat(signals.stopLoss),
-                    color: '#EF4444',
-                    lineWidth: 2,
-                    lineStyle: 0, // Solid
-                    axisLabelVisible: true,
-                    title: 'STOP LOSS',
-                });
-                currentTp1Line = candlestickSeries.createPriceLine({
-                    price: parseFloat(signals.tp1),
-                    color: '#10B981',
-                    lineWidth: 2,
-                    lineStyle: 0, // Solid
-                    axisLabelVisible: true,
-                    title: 'TARGET 1',
-                });
-                currentTp2Line = candlestickSeries.createPriceLine({
-                    price: parseFloat(signals.tp2),
-                    color: '#10B981',
-                    lineWidth: 2,
-                    lineStyle: 1, // Dotted
-                    axisLabelVisible: true,
-                    title: 'TARGET 2',
-                });
-            }
-
-            // Draw Pattern Boundaries if detected
-            if (sig.details && sig.details.patterns && sig.details.patterns.length > 0) {
-                const p = sig.details.patterns[0];
-                const pts = p.points;
-                
-                if (pts.length >= 2) {
-                    const upperPts = p.type.includes('TRIANGLE') ? pts.slice(0, 2) : (p.type === 'DOUBLE_TOP' ? pts : []);
-                    const lowerPts = p.type.includes('TRIANGLE') ? pts.slice(2, 4) : (p.type === 'DOUBLE_BOTTOM' ? pts : []);
-
-                    if (upperPts.length >= 2) {
-                        patternUpperSeries = currentStockChart.addSeries(LineSeries, {
-                            color: p.color,
-                            lineWidth: 2,
-                            lineStyle: 0,
-                            title: p.name + ' Top'
-                        });
-                        // Interpolate points between start and end index
-                        const start = Math.min(...upperPts.map(pt => pt.index));
-                        const end = Math.max(...upperPts.map(pt => pt.index));
-                        const sVal = upperPts.find(pt => pt.index === start).value;
-                        const eVal = upperPts.find(pt => pt.index === end).value;
-                        
-                        const lineData = candles.filter((_, i) => i >= start && i <= end).map((c, i, arr) => {
-                            const ratio = i / (arr.length - 1);
-                            return { time: c.time, value: sVal + ratio * (eVal - sVal) };
-                        });
-                        patternUpperSeries.setData(lineData);
-                    }
-
-                    if (lowerPts.length >= 2) {
-                        patternLowerSeries = currentStockChart.addSeries(LineSeries, {
-                            color: p.color,
-                            lineWidth: 2,
-                            lineStyle: 0,
-                            title: p.name + ' Bottom'
-                        });
-                        const start = Math.min(...lowerPts.map(pt => pt.index));
-                        const end = Math.max(...lowerPts.map(pt => pt.index));
-                        const sVal = lowerPts.find(pt => pt.index === start).value;
-                        const eVal = lowerPts.find(pt => pt.index === end).value;
-                        
-                        const lineData = candles.filter((_, i) => i >= start && i <= end).map((c, i, arr) => {
-                            const ratio = i / (arr.length - 1);
-                            return { time: c.time, value: sVal + ratio * (eVal - sVal) };
-                        });
-                        patternLowerSeries.setData(lineData);
-                    }
-                }
-            }
-        }
+        renderTacticalChart(candles);
+        updateAISignals(ticker, candles);
     } else {
         const signalCard = document.getElementById('ai-signal-card');
         if (signalCard) signalCard.style.display = 'none';
@@ -2419,6 +2138,9 @@ function togglePipTactical() {
     if (isPipTacticalEnabled) {
         btn.classList.add('active');
         container.style.display = 'block';
+        if (currentChartData && currentChartData.length > 0) {
+            renderTacticalChart(currentChartData);
+        }
     } else {
         btn.classList.remove('active');
         container.style.display = 'none';
@@ -2428,10 +2150,6 @@ function togglePipTactical() {
             pipLineSeries = null;
         }
     }
-    
-    // Force re-render to initialize or update the tactical chart
-    const ticker = document.getElementById('detail-ticker').textContent;
-    if (ticker) loadStockDetail(ticker);
 }
 
 function togglePipOverlay() {
@@ -2732,5 +2450,236 @@ function renderStructureLabels(pips, chartInstance) {
     // Set markers on the invisible series to show them on the chart
     if (structureLabelSeries) {
         createSeriesMarkers(structureLabelSeries, markers);
+    }
+}
+
+// --- Charting Modules ---
+function renderTacticalChart(candles) {
+    if (!isPipTacticalEnabled || !candles || candles.length === 0) {
+        if (pipChartInstance) {
+            pipChartInstance.remove();
+            pipChartInstance = null;
+        }
+        return;
+    }
+
+    const pipContainer = document.getElementById('pipChart');
+    const patternLabel = document.getElementById('pip-pattern-label');
+    if (!pipContainer || !patternLabel) return;
+
+    if (pipChartInstance) {
+        pipChartInstance.remove();
+    }
+
+    pipChartInstance = createChart(pipContainer, {
+        width: pipContainer.clientWidth,
+        height: 180,
+        layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
+        grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+        timeScale: { 
+            visible: true, 
+            borderVisible: false,
+            borderColor: 'rgba(255,255,255,0.1)'
+        },
+        rightPriceScale: { 
+            borderVisible: false,
+            minimumWidth: 80
+        },
+        crosshair: { mode: CrosshairMode.Normal }
+    });
+
+    pipLineSeries = pipChartInstance.addSeries(LineSeries, {
+        color: '#eab308',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: true
+    });
+
+    patternOverlaySeries = pipChartInstance.addSeries(LineSeries, {
+        lineWidth: 2,
+        lineStyle: 0,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+    });
+
+    structureLabelSeries = pipChartInstance.addSeries(LineSeries, {
+        visible: false,
+        priceLineVisible: false,
+        lastValueVisible: false
+    });
+
+    pipGhostSeries = pipChartInstance.addSeries(LineSeries, {
+        visible: false,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+    });
+    pipGhostSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+
+    const initialPips = findPIPs(candles.slice(-60));
+    pipLineSeries.setData(initialPips.map(p => ({ time: p.time, value: p.value })));
+    
+    // --- Sync Logic ---
+    if (currentStockChart) {
+        currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+            if (!range || !pipChartInstance) return;
+            const currentRange = pipChartInstance.timeScale().getVisibleLogicalRange();
+            if (!areRangesEqual(range, currentRange)) {
+                pipChartInstance.timeScale().setVisibleLogicalRange(range);
+            }
+        });
+        pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
+            if (!range || !currentStockChart) return;
+            const currentRange = currentStockChart.timeScale().getVisibleLogicalRange();
+            if (!areRangesEqual(range, currentRange)) {
+                currentStockChart.timeScale().setVisibleLogicalRange(range);
+            }
+        });
+
+        currentStockChart.subscribeCrosshairMove(param => {
+            if (!pipChartInstance || !pipLineSeries) return;
+            if (!param.time) {
+                pipChartInstance.clearCrosshairPosition();
+            } else {
+                pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
+            }
+        });
+        pipChartInstance.subscribeCrosshairMove(param => {
+            if (!currentStockChart || !candlestickSeries) return;
+            if (!param.time) {
+                currentStockChart.clearCrosshairPosition();
+            } else {
+                currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries);
+            }
+        });
+
+        // Sync initial range
+        const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
+        if (mainRange) {
+            setTimeout(() => {
+                if (pipChartInstance) pipChartInstance.timeScale().setVisibleLogicalRange(mainRange);
+            }, 100);
+        }
+    }
+
+    const tacticalSignal = typeof generatePIPSignal === 'function' ? generatePIPSignal(candles) : { patterns: [], probability: { bullish: 50, bearish: 50 } };
+    const pips = findPIPs(candles);
+
+    if (tacticalSignal && tacticalSignal.patterns && tacticalSignal.patterns.length > 0) {
+        const p = tacticalSignal.patterns[0];
+        patternLabel.textContent = `PATTERN: ${p.name}`;
+        patternLabel.style.display = 'block';
+        patternLabel.style.background = `${p.color}33`;
+        patternLabel.style.color = p.color;
+        patternLabel.style.borderColor = `${p.color}4d`;
+        renderPatternGeometry(p, pips, pipChartInstance);
+    } else {
+        patternLabel.style.display = 'none';
+    }
+
+    renderStructureLabels(pips, pipChartInstance);
+
+    let probContainer = document.getElementById('tactical-probability');
+    if (!probContainer) {
+        probContainer = document.createElement('div');
+        probContainer.id = 'tactical-probability';
+        probContainer.className = 'probability-container';
+        patternLabel.parentNode.insertBefore(probContainer, patternLabel.nextSibling);
+    }
+
+    const prob = tacticalSignal.probability || { bullish: 50, bearish: 50 };
+    probContainer.innerHTML = `
+        <div class="prob-header">
+            <span>Forecast Confidence</span>
+            <span class="prob-val ${prob.bullish >= 50 ? 'bull' : 'bear'}">${Math.max(prob.bullish, prob.bearish)}%</span>
+        </div>
+        <div class="prob-bar-bg">
+            <div class="prob-bar-fill bull" style="width: ${prob.bullish}%"></div>
+            <div class="prob-bar-fill bear" style="width: ${prob.bearish}%"></div>
+        </div>
+        <div class="prob-footer">
+            <span class="bull-label">BULL ${prob.bullish}%</span>
+            <span class="bear-label">BEAR ${prob.bearish}%</span>
+        </div>
+    `;
+}
+
+function updateAISignals(ticker, candles) {
+    if (!candles || candles.length === 0) return;
+    const signals = calculateAISignals(ticker, candles);
+    const signalCard = document.getElementById('ai-signal-card');
+    if (!signalCard) return;
+
+    if (signals) {
+        signalCard.style.display = 'block';
+        const sig = signals.signal;
+        const trend = signals.trend;
+        
+        signalCard.innerHTML = `
+            <div class="glass-panel strategy-card" style="border-left: 4px solid ${sig.color};">
+                <div class="strategy-header">
+                    <h3 class="strategy-title">
+                        <i class="fa-solid fa-robot"></i> AI Strategy: <span style="color: ${sig.color}">${sig.text}</span>
+                    </h3>
+                    <span class="badge strategy-badge">${trend.status}</span>
+                </div>
+                
+                <div class="strategy-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Stop Loss (PIP/ATR)</span>
+                        <span class="stat-value negative">$${signals.stopLoss}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Target 1 (1:2)</span>
+                        <span class="stat-value positive">$${signals.tp1}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Target 2 (1:3)</span>
+                        <span class="stat-value positive">$${signals.tp2}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Confidence</span>
+                        <span class="stat-value" style="color: var(--accent-primary);">${Math.round((sig.confidence || 0) * 100)}%</span>
+                    </div>
+                </div>
+
+                <div class="strategy-analysis">
+                    <strong><i class="fa-solid fa-circle-info"></i> Analysis:</strong><br>
+                    PIP trend is ${trend.status.toLowerCase()}. 
+                    ${trend.status === 'BULLISH' ? 'Strong higher-peaks/higher-troughs structure detected.' : ''}
+                    ${trend.status === 'CONSOLIDATION' ? 'Price is oscillating within a tight range (neckline identification active).' : ''}
+                    ${sig.signal === 'BUY' ? `Signal triggered by ${sig.details.reason}. Target entries at current level.` : 'Waiting for optimal entry setup.'}
+                </div>
+            </div>
+        `;
+
+        if (candlestickSeries) {
+            currentStopLossLine = candlestickSeries.createPriceLine({
+                price: parseFloat(signals.stopLoss),
+                color: '#EF4444',
+                lineWidth: 2,
+                lineStyle: 0,
+                axisLabelVisible: true,
+                title: 'STOP LOSS',
+            });
+            currentTp1Line = candlestickSeries.createPriceLine({
+                price: parseFloat(signals.tp1),
+                color: '#10B981',
+                lineWidth: 2,
+                lineStyle: 0,
+                axisLabelVisible: true,
+                title: 'TARGET 1',
+            });
+            currentTp2Line = candlestickSeries.createPriceLine({
+                price: parseFloat(signals.tp2),
+                color: '#10B981',
+                lineWidth: 2,
+                lineStyle: 1,
+                axisLabelVisible: true,
+                title: 'TARGET 2',
+            });
+        }
     }
 }
