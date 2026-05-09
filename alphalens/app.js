@@ -1627,7 +1627,10 @@ async function loadChartData(ticker, tf) {
                     borderVisible: false,
                     borderColor: 'rgba(255,255,255,0.1)'
                 },
-                rightPriceScale: { borderVisible: false },
+                rightPriceScale: { 
+                    borderVisible: false,
+                    minimumWidth: 80
+                },
                 crosshair: { mode: CrosshairMode.Normal }
             });
 
@@ -1907,7 +1910,10 @@ function renderTradingViewChart(data) {
         layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF' },
         grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
         crosshair: { mode: CrosshairMode.Normal },
-        rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
+        rightPriceScale: { 
+            borderColor: 'rgba(255,255,255,0.1)',
+            minimumWidth: 80
+        },
         timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
     });
 
@@ -2209,7 +2215,11 @@ function toggleRSI(active, period = 14) {
     rsiChart = createChart(rsiContainer, {
         layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF', fontSize: 10 },
         grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
-        rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)', scaleMargins: { top: 0.1, bottom: 0.1 } },
+        rightPriceScale: { 
+            borderColor: 'rgba(255,255,255,0.1)', 
+            scaleMargins: { top: 0.1, bottom: 0.1 },
+            minimumWidth: 80
+        },
         timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, visible: false },
         crosshair: { mode: CrosshairMode.Normal },
     });
