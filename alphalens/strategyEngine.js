@@ -165,13 +165,13 @@ export function findPIPs(candles, useCache = true) {
     const bestK = pipNumByMse(pipVdSum);
     const finalK = Math.min(Math.max(bestK, 5), pipIndexByOrder.length);
     const bestPipIndices = pipIndexByOrder.slice(0, finalK);
-    const resultPips = bestPipIndices.map((idx, i) => ({
+    const result = bestPipIndices.sort((a, b) => a - b).map(idx => ({
         ...data[idx],
-        vd: pipVds[i]
-    })).sort((a, b) => a.index - b.index);
+        pipOrder: bestPipIndices.indexOf(idx)
+    }));
 
-    if (useCache) pipCache.set(cacheKey, resultPips);
-    return resultPips;
+    if (useCache) pipCache.set(cacheKey, result);
+    return result;
 }
 
 /**

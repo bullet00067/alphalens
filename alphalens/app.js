@@ -2523,6 +2523,8 @@ function scrollToBottom() {
 function renderPatternGeometry(pattern, pips, chartInstance) {
     if (!pattern || !chartInstance || !currentChartData) return;
     
+    const isTactical = (chartInstance === pipChartInstance);
+    
     // Ensure we have series
     if (!patternUpperSeries) {
         patternUpperSeries = chartInstance.addSeries(LineSeries, { 
@@ -2551,6 +2553,7 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
     }
 
     const lastBar = currentChartData[currentChartData.length - 1];
+    const lastIdx = currentChartData.length - 1;
 
     if (pattern.type.includes('TRIANGLE') || pattern.type === 'RECTANGLE') {
         const p1 = pattern.points[0];
@@ -2558,22 +2561,31 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
         const t1 = pattern.points[2];
         const t2 = pattern.points[3];
         
-        // Calculate full projection to the end of the chart
-        const lastIdx = currentChartData.length - 1;
+        // Use either absolute price or standardized stdY
+        const getV = (p) => isTactical ? p.stdY : p.value;
+        
+        const v_p1 = getV(p1);
+        const v_p2 = getV(p2);
+        const v_t1 = getV(t1);
+        const v_t2 = getV(t2);
+
+        // Recalculate slopes for standardized space if needed
+        const slopeU = (v_p2 - v_p1) / (p2.index - p1.index);
+        const slopeL = (v_t2 - v_t1) / (t2.index - t1.index);
         
         const upperData = [
-            { time: p1.time, value: p1.value },
-            { time: p2.time, value: p2.value }
+            { time: p1.time, value: v_p1 },
+            { time: p2.time, value: v_p2 }
         ];
         
         const lowerData = [
-            { time: t1.time, value: t1.value },
-            { time: t2.time, value: t2.value }
+            { time: t1.time, value: v_t1 },
+            { time: t2.time, value: v_t2 }
         ];
 
         // Add projection point
-        const upperProj = p1.value + pattern.upperSlope * (lastIdx - p1.index);
-        const lowerProj = t1.value + pattern.lowerSlope * (lastIdx - t1.index);
+        const upperProj = v_p1 + slopeU * (lastIdx - p1.index);
+        const lowerProj = v_t1 + slopeL * (lastIdx - t1.index);
         
         upperData.push({ time: lastBar.time, value: upperProj });
         lowerData.push({ time: lastBar.time, value: lowerProj });
@@ -2583,47 +2595,60 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
     } else if (pattern.type.includes('DOUBLE')) {
         const sortedPoints = [...pattern.points].sort((a, b) => a.index - b.index);
         if (sortedPoints.length >= 2) {
-            patternUpperSeries.setData(sortedPoints.map(p => ({ time: p.time, value: p.value })));
+            patternUpperSeries.setData(sortedPoints.map(p => ({ 
+                time: p.time, 
+                value: isTactical ? p.stdY : p.value 
+            })));
             patternLowerSeries.setData([]);
         }
     }
 }
 
 function renderStructureLabels(pips, chartInstance) {
-    if (!pips || pips.length < 5 || !chartInstance) return;
+    if (!pips || !chartInstance || !structureLabelSeries) return;
     
     const markers = [];
-    const peaks = [];
-    const troughs = [];
+    const isTactical = (chartInstance === pipChartInstance);
 
-    // Identify peaks and troughs first
     for (let i = 1; i < pips.length - 1; i++) {
+        const prev = pips[i-1];
+        const curr = pips[i];
         const next = pips[i+1];
         
         let label = '';
         let color = '#94a3b8';
         let position = 'aboveBar';
         
-        const prev = pips[i-1];
-        const curr = pips[i];
-        
-        if (curr.value > prev.value && curr.value > next.value) {
+        const getV = (p) => isTactical ? p.stdY : p.value;
+        const v_curr = getV(curr);
+        const v_prev = getV(prev);
+        const v_next = getV(next);
+
+        if (v_curr > v_prev && v_curr > v_next) {
             // Peak - Check if HH or LH
-            const prevPeaks = pips.slice(0, i).filter((p, idx) => idx > 0 && p.value > pips[idx-1].value && p.value > pips[idx+1].value);
+            const prevPeaks = pips.slice(0, i).filter((p, idx) => {
+                if (idx === 0 || idx >= pips.length - 1) return false;
+                const v = getV(p);
+                return v > getV(pips[idx-1]) && v > getV(pips[idx+1]);
+            });
             if (prevPeaks.length > 0) {
                 const lastPeak = prevPeaks[prevPeaks.length - 1];
-                label = curr.value > lastPeak.value ? 'HH' : 'LH';
+                label = v_curr > getV(lastPeak) ? 'HH' : 'LH';
             } else {
                 label = 'H';
             }
             color = '#ef4444';
             position = 'aboveBar';
-        } else if (curr.value < prev.value && curr.value < next.value) {
+        } else if (v_curr < v_prev && v_curr < v_next) {
             // Trough - Check if HL or LL
-            const prevTroughs = pips.slice(0, i).filter((p, idx) => idx > 0 && p.value < pips[idx-1].value && p.value < pips[idx+1].value);
+            const prevTroughs = pips.slice(0, i).filter((p, idx) => {
+                if (idx === 0 || idx >= pips.length - 1) return false;
+                const v = getV(p);
+                return v < getV(pips[idx-1]) && v < getV(pips[idx+1]);
+            });
             if (prevTroughs.length > 0) {
                 const lastTrough = prevTroughs[prevTroughs.length - 1];
-                label = curr.value > lastTrough.value ? 'HL' : 'LL';
+                label = v_curr > getV(lastTrough) ? 'HL' : 'LL';
             } else {
                 label = 'L';
             }
@@ -2643,7 +2668,6 @@ function renderStructureLabels(pips, chartInstance) {
         }
     }
     
-    // Set markers on the invisible series to show them on the chart
     if (structureLabelSeries) {
         createSeriesMarkers(structureLabelSeries, markers);
     }
@@ -2737,7 +2761,7 @@ function renderTacticalChart(candles) {
     }
 
     pipChartInstance = createChart(pipContainer, {
-        width: pipContainer.clientWidth,
+        width: pipContainer.clientWidth || 800,
         height: 180,
         layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
         grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
@@ -2787,10 +2811,34 @@ function renderTacticalChart(candles) {
         lastValueVisible: false,
         crosshairMarkerVisible: false
     });
-    pipGhostSeries.setData(candles.map(c => ({ time: c.time, value: c.close })));
+    // 1. Standardized Main Data (the "Ghost" series for background)
+    pipGhostSeries.setData(candles.map(c => {
+        // We need the standardization stats to map these correctly
+        // For simplicity, we calculate a local standardization for this window
+        const vals = candles.map(v => Math.log10(v.close));
+        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+        const std = Math.sqrt(vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / vals.length) || 1;
+        return { 
+            time: c.time, 
+            value: (Math.log10(c.close) - mean) / std 
+        };
+    }));
 
+    // 2. Standardized PIP Data
     const initialPips = findPIPs(candles.slice(-60));
-    pipLineSeries.setData(initialPips.map(p => ({ time: p.time, value: p.value })));
+    pipLineSeries.setData(initialPips.map(p => ({ time: p.time, value: p.stdY })));
+
+    // 3. Pattern Recognition and Rendering
+    const patterns = identifyPatterns(initialPips);
+    if (patterns.length > 0) {
+        const bestPattern = patterns[0];
+        patternLabel.textContent = `Pattern: ${bestPattern.name}`;
+        renderPatternGeometry(bestPattern, initialPips, pipChartInstance);
+        renderPatternLabels(bestPattern, initialPips, pipChartInstance);
+    } else {
+        patternLabel.textContent = 'Pattern: Detecting...';
+    }
+    renderStructureLabels(initialPips, pipChartInstance);
     
     // --- Sync Logic ---
     if (currentStockChart) {

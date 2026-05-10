@@ -19,3 +19,9 @@
 - [x] Test with ticker MXL (high volatility) to verify pattern lines.
 - [x] Verify tooltip disappearance on both main and tactical charts.
 - [x] Confirm layout stability on mobile (Portrait/Landscape).
+- [x] 修復 TACTICAL 圖表可見性 (解決 `display: none` 渲染問題)
+- [x] 實作標準化 PIP 運算邏輯 (解決 MXL 等高波動股票的量尺偏誤)
+- [x] 在 TACTICAL 圖表上渲染幾何型態輔助線 (三角形、矩形)
+- [x] 實作 Tooltip 清除邏輯 (修復懸停標籤殘留問題)
+- [x] 優化初始化流程 (增加 `safeInit` 防禦性邏輯，防止 DOM 缺失導致崩潰)
+- [x] 同步本地與線上 (Render) 環境代碼
