@@ -2817,19 +2817,8 @@ function renderTacticalChart(candles) {
     const initialPips = allPips.slice(-60); // Patterns usually based on recent window
     pipLineSeries.setData(allPips.map(p => ({ time: p.time, value: p.stdY })));
 
-    // 3. Pattern Recognition and Rendering
-    const patterns = identifyPatterns(initialPips);
-    if (patterns.length > 0) {
-        const bestPattern = patterns[0];
-        patternLabel.textContent = `Pattern: ${bestPattern.name}`;
-        renderPatternGeometry(bestPattern, initialPips, pipChartInstance);
-        renderPatternLabels(bestPattern, initialPips, pipChartInstance);
-    } else {
-        patternLabel.textContent = 'Pattern: Detecting...';
-    }
-    renderStructureLabels(initialPips, pipChartInstance);
+    // 3. Sync Logic
     
-    // --- Sync Logic ---
     if (currentStockChart) {
         // Initial Range Sync
         const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
@@ -2887,11 +2876,11 @@ function renderTacticalChart(candles) {
                                 ...m,
                                 text: m.time === param.time ? text : ""
                             }));
-                            createSeriesMarkers(pipLineSeries, updated);
+                            pipLineSeries.setMarkers(updated);
                             tacticalHoverState.time = param.time;
                         }
                     } else if (!hoveredMarker && tacticalHoverState.time !== null) {
-                        clearAllLabels(pipLineSeries, currentPipMarkers);
+                        pipLineSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
                         tacticalHoverState.time = null;
                     }
                 }
@@ -2909,8 +2898,7 @@ function renderTacticalChart(candles) {
         if (pipChartContainer) {
             pipChartContainer.addEventListener('mouseleave', () => {
                 if (tacticalHoverState.time !== null) {
-                    const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
-                    createSeriesMarkers(pipLineSeries, cleaned);
+                    pipLineSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             });
