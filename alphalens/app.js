@@ -1970,7 +1970,6 @@ function renderTradingViewChart(data) {
     });
 
     // Fallback: Clear markers when mouse leaves the chart container
-    const chartContainer = document.getElementById('stockChart');
     if (chartContainer) {
         chartContainer.addEventListener('mouseleave', () => {
             if (mainHoverState.time !== null) {
