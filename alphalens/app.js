@@ -1892,37 +1892,31 @@ function renderTradingViewChart(data) {
     // Enable volume by default
     toggleVolume(true);
 
-    // Initial PIP markers to ensure they show up immediately for the default 60-bar view
+    // Initial PIP markers
     if (isPipOverlayEnabled) {
         try {
-            const initialRange = data.slice(-60);
-            const initialPips = findPIPs(initialRange);
-            pipSeries.setData(initialPips);
-            const initialMarkers = initialPips.map((p, idx) => {
-                let isHigh;
-                if (idx > 0 && idx < initialPips.length - 1) {
-                    isHigh = p.value > initialPips[idx-1].value && p.value > initialPips[idx+1].value;
-                } else if (idx === 0 && initialPips.length > 1) {
-                    isHigh = p.value > initialPips[1].value;
-                } else if (idx === initialPips.length - 1 && initialPips.length > 1) {
-                    isHigh = p.value > initialPips[idx-1].value;
-                } else {
-                    isHigh = true;
-                }
-                return {
-                    time: p.time,
-                    position: isHigh ? 'aboveBar' : 'belowBar',
-                    color: isHigh ? '#ef4444' : '#10b981',
-                    shape: isHigh ? 'arrowDown' : 'arrowUp'
-                };
-            });
-            currentPipMarkers = initialMarkers;
-            createSeriesMarkers(candlestickSeries, initialMarkers);
+            const pips = findPIPs(data);
+            if (pips && pips.length > 0) {
+                const initialMarkers = pips.map(p => {
+                    let isHigh = (p.type === 'peak' || p.type === 'LH' || p.type === 'HH');
+                    return {
+                        time: p.time,
+                        position: isHigh ? 'aboveBar' : 'belowBar',
+                        color: isHigh ? '#ef4444' : '#10b981',
+                        shape: isHigh ? 'arrowDown' : 'arrowUp',
+                        text: ""
+                    };
+                });
+                currentPipMarkers = initialMarkers;
+                candlestickSeries.setMarkers(initialMarkers);
+            } else {
+                candlestickSeries.setMarkers([]);
+            }
         } catch (e) {
             console.error("Initial PIP markers failed:", e);
         }
     } else {
-        createSeriesMarkers(candlestickSeries, []);
+        candlestickSeries.setMarkers([]);
     }
 
     // Interactive Marker Hover Logic
@@ -1931,13 +1925,13 @@ function renderTradingViewChart(data) {
     function clearAllLabels(series, markers) {
         if (!markers || markers.length === 0) return;
         const cleaned = markers.map(m => ({ ...m, text: "" }));
-        createSeriesMarkers(series, cleaned);
+        series.setMarkers(cleaned);
     }
 
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time) {
             if (mainHoverState.time !== null) {
-                clearAllLabels(candlestickSeries, currentPipMarkers);
+                candlestickSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
                 mainHoverState.time = null;
             }
             return;
@@ -1953,12 +1947,12 @@ function renderTradingViewChart(data) {
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
-                    createSeriesMarkers(candlestickSeries, updated);
+                    candlestickSeries.setMarkers(updated);
                     mainHoverState.time = param.time;
                 }
             }
         } else if (mainHoverState.time !== null) {
-            clearAllLabels(candlestickSeries, currentPipMarkers);
+            candlestickSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
             mainHoverState.time = null;
         }
     });
@@ -2800,7 +2794,7 @@ function renderTacticalChart(candles) {
     });
 
     pipGhostSeries = pipChartInstance.addSeries(LineSeries, {
-        visible: false,
+        color: 'rgba(0,0,0,0)', // Transparent but visible to anchor the timescale
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false
@@ -2818,9 +2812,10 @@ function renderTacticalChart(candles) {
         };
     }));
 
-    // 2. Standardized PIP Data
-    const initialPips = findPIPs(candles.slice(-60));
-    pipLineSeries.setData(initialPips.map(p => ({ time: p.time, value: p.stdY })));
+    // 2. Standardized PIP Data - Process FULL range for sync
+    const allPips = findPIPs(candles);
+    const initialPips = allPips.slice(-60); // Patterns usually based on recent window
+    pipLineSeries.setData(allPips.map(p => ({ time: p.time, value: p.stdY })));
 
     // 3. Pattern Recognition and Rendering
     const patterns = identifyPatterns(initialPips);
@@ -2846,11 +2841,18 @@ function renderTacticalChart(candles) {
 
         currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
             if (!range || !pipChartInstance) return;
-            pipChartInstance.timeScale().setVisibleLogicalRange(range);
+            const tacticalRange = pipChartInstance.timeScale().getVisibleLogicalRange();
+            if (JSON.stringify(range) !== JSON.stringify(tacticalRange)) {
+                pipChartInstance.timeScale().setVisibleLogicalRange(range);
+            }
         });
+
         pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
             if (!range || !currentStockChart) return;
-            currentStockChart.timeScale().setVisibleLogicalRange(range);
+            const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
+            if (JSON.stringify(range) !== JSON.stringify(mainRange)) {
+                currentStockChart.timeScale().setVisibleLogicalRange(range);
+            }
         });
 
         currentStockChart.subscribeCrosshairMove(param => {
