@@ -1910,11 +1910,10 @@ function renderTradingViewChart(data) {
     // Interactive Marker Hover Logic
     let lastHoveredPipTime = null;
 
-    // Interactive Marker Hover Logic
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time || currentPipMarkers.length === 0) {
             if (lastHoveredPipTime !== null) {
-                const cleaned = currentPipMarkers.map(m => ({ ...m }));
+                const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
                 createSeriesMarkers(candlestickSeries, cleaned);
                 lastHoveredPipTime = null;
             }
@@ -1928,12 +1927,11 @@ function renderTradingViewChart(data) {
                 const candle = data.find(d => d.time === param.time);
                 if (candle) {
                     const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
-                    const updated = currentPipMarkers.map(m => {
+                    const updated = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => {
                         if (m.time === param.time) {
                             return { ...m, text: text };
                         } else {
-                            const { text: _, ...rest } = m; 
-                            return { ...rest };
+                            return { ...m, text: "" };
                         }
                     });
                     createSeriesMarkers(candlestickSeries, updated);
@@ -1942,10 +1940,7 @@ function renderTradingViewChart(data) {
             }
         } else {
             if (lastHoveredPipTime !== null) {
-                const cleaned = currentPipMarkers.map(m => {
-                    const { text: _, ...rest } = m;
-                    return { ...rest };
-                });
+                const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
                 createSeriesMarkers(candlestickSeries, cleaned);
                 lastHoveredPipTime = null;
             }
