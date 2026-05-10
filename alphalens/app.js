@@ -1718,7 +1718,7 @@ async function loadStockDetail(ticker) {
     currentTicker = ticker; // Save for TF switching
     switchView('stock-detail-view');
     document.getElementById('detail-ticker').textContent = ticker;
-    document.getElementById('detail-name').textContent = 'Loading...';
+    document.getElementById('detail-name').textContent = ticker; // Default to ticker during load
     document.getElementById('detail-price').textContent = '...';
     document.getElementById('detail-change').textContent = '';
     document.getElementById('ai-quick-summary').innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Fetching dual-engine data...`;
