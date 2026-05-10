@@ -1,4 +1,4 @@
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
 import { generatePIPSignal, findPIPs, analyzeTrend } from './strategyEngine.js';
 
 import { initializeApp } from "firebase/app";
@@ -1843,7 +1843,7 @@ function renderTradingViewChart(data) {
     candlestickSeries.setData(data);
     
     // Add Markers Plugin
-    candlestickSeries.setMarkers([]);
+    createSeriesMarkers(candlestickSeries, []);
     
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
@@ -1899,12 +1899,12 @@ function renderTradingViewChart(data) {
                 };
             });
             currentPipMarkers = initialMarkers;
-            candlestickSeries.setMarkers(initialMarkers);
+            createSeriesMarkers(candlestickSeries, initialMarkers);
         } catch (e) {
             console.error("Initial PIP markers failed:", e);
         }
     } else {
-        candlestickSeries.setMarkers([]);
+        createSeriesMarkers(candlestickSeries, []);
     }
 
     // Interactive Marker Hover Logic
@@ -1936,7 +1936,7 @@ function renderTradingViewChart(data) {
                             return { ...rest };
                         }
                     });
-                    candlestickSeries.setMarkers(updated);
+                    createSeriesMarkers(candlestickSeries, updated);
                     lastHoveredPipTime = param.time;
                 }
             }
@@ -1946,7 +1946,7 @@ function renderTradingViewChart(data) {
                     const { text: _, ...rest } = m;
                     return { ...rest };
                 });
-                candlestickSeries.setMarkers(cleaned);
+                createSeriesMarkers(candlestickSeries, cleaned);
                 lastHoveredPipTime = null;
             }
         }
@@ -2015,7 +2015,7 @@ function refreshPipAnalysis(logicalRange, allData) {
                 };
             });
             currentPipMarkers = markers;
-            candlestickSeries.setMarkers(markers);
+            createSeriesMarkers(candlestickSeries, markers);
         }
         
         // 2. Update Tactical Panel (if enabled)
@@ -2596,7 +2596,7 @@ function renderStructureLabels(pips, chartInstance) {
     
     // Set markers on the invisible series to show them on the chart
     if (structureLabelSeries) {
-        structureLabelSeries.setMarkers(markers);
+        createSeriesMarkers(structureLabelSeries, markers);
     }
 }
 
@@ -2637,7 +2637,7 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
         });
     }
 
-    patternLabelSeries.setMarkers(markers);
+    createSeriesMarkers(patternLabelSeries, markers);
 }
 
 // --- Charting Modules ---
