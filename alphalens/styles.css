@@ -1510,6 +1510,45 @@ tbody tr:hover {
     }
 }
 /* Probability Meter Styles */
+.tactical-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tactical-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.tactical-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.tactical-value {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.validation-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.05);
+}
+
 .probability-container {
     margin-top: 16px;
     padding: 16px;

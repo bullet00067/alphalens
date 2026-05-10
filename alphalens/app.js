@@ -74,6 +74,37 @@ const formatDt = (d) => d.toISOString().split('T')[0];
 
 // Simple in-memory cache to speed up repeated requests
 const apiCache = new Map();
+let validationStatus = { status: 'PENDING', diff: 0, ticker: null };
+
+async function verifyWithYahoo(ticker, localPrice) {
+    if (!ticker) return { status: 'ERROR' };
+    
+    // Convert ticker to Yahoo format if needed (e.g. 2330 -> 2330.TW)
+    let yTicker = ticker;
+    if (/^\d{4}$/.test(ticker)) yTicker = `${ticker}.TW`;
+    
+    try {
+        console.log(`[ACL] Verifying ${ticker} price against Yahoo Finance...`);
+        const url = `/yahoo/${yTicker}?interval=1m&range=1d`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Yahoo Finance unreachable');
+        
+        const data = await res.json();
+        const meta = data.chart.result[0].meta;
+        const yahooPrice = meta.regularMarketPrice;
+        const diff = Math.abs(localPrice - yahooPrice) / yahooPrice;
+        
+        const status = diff < 0.005 ? 'SUCCESS' : 'WARNING';
+        validationStatus = { status, diff, ticker, yahooPrice };
+        
+        console.log(`[ACL] Verification ${status}: Local=${localPrice}, Yahoo=${yahooPrice}, Diff=${(diff*100).toFixed(2)}%`);
+        return validationStatus;
+    } catch (e) {
+        console.warn(`[ACL] Verification failed for ${ticker}:`, e);
+        validationStatus = { status: 'ERROR', ticker };
+        return validationStatus;
+    }
+}
 
 async function fetchWithProxy(url) {
     // Check cache first
@@ -1206,9 +1237,17 @@ function calculateAISignals(ticker, candles) {
     
     const riskPerShare = lastPrice - stopLoss;
     
-    // Targets (Tactical: based on current price risk)
-    const tp1 = lastPrice + (2 * riskPerShare); // 1:2
-    const tp2 = lastPrice + (3 * riskPerShare); // 1:3
+    // Targets (Tactical: based on current price risk or pattern height)
+    let tp1 = lastPrice + (2 * riskPerShare);
+    let tp2 = lastPrice + (3 * riskPerShare);
+    
+    if (pipSignal.details && pipSignal.details.targetPrice) {
+        // If it's a BUY signal with a pattern target, use it as TP1
+        if (pipSignal.signal === 'BUY') {
+            tp1 = pipSignal.details.targetPrice;
+            tp2 = tp1 + (riskPerShare); // TP2 is 1R further
+        }
+    }
     
     // Projected P/L (Based on actual entry cost if in portfolio)
     const slImpact = qty * (stopLoss - entryPrice);
@@ -1751,7 +1790,17 @@ async function loadChartData(ticker, tf) {
             </div>
         `;
         renderTradingViewChart(candles);
-        renderTacticalChart(candles);
+        
+        // --- Validation Start ---
+        if (isPipTacticalEnabled) {
+            verifyWithYahoo(ticker, safeQuote.c).then(() => {
+                renderTacticalChart(candles);
+            });
+        } else {
+            renderTacticalChart(candles);
+        }
+        // --- Validation End ---
+        
         updateAISignals(ticker, candles);
     } catch (err) {
         const isQuotaError = err.message.includes('402') || (err instanceof Response && err.status === 402);
@@ -2234,21 +2283,27 @@ function initIndicators() {
 function togglePipTactical() {
     isPipTacticalEnabled = !isPipTacticalEnabled;
     const btn = document.querySelector('[data-type="pip-tactical"]');
-    const container = document.getElementById('pipChart');
+    const insightPanel = document.getElementById('tactical-insights-panel');
     
     if (isPipTacticalEnabled) {
         btn.classList.add('active');
-        container.style.display = 'block';
-        if (currentChartData && currentChartData.length > 0) {
+        if (insightPanel) insightPanel.style.display = 'block';
+        if (currentChartData) {
             renderTacticalChart(currentChartData);
         }
     } else {
         btn.classList.remove('active');
-        container.style.display = 'none';
+        if (insightPanel) insightPanel.style.display = 'none';
         if (pipChartInstance) {
             pipChartInstance.remove();
             pipChartInstance = null;
             pipLineSeries = null;
+            patternOverlaySeries = null;
+            structureLabelSeries = null;
+            patternLabelSeries = null;
+            patternUpperSeries = null;
+            patternLowerSeries = null;
+            pipGhostSeries = null;
         }
     }
 }
@@ -2450,14 +2505,14 @@ function scrollToBottom() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 function renderPatternGeometry(pattern, pips, chartInstance) {
-    if (!pattern || !chartInstance) return;
+    if (!pattern || !chartInstance || !currentChartData) return;
     
     // Ensure we have series
     if (!patternUpperSeries) {
         patternUpperSeries = chartInstance.addSeries(LineSeries, { 
             color: pattern.color, 
             lineWidth: 2, 
-            lineStyle: 0, 
+            lineStyle: 2, // Dashed for projection
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false 
@@ -2470,7 +2525,7 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
         patternLowerSeries = chartInstance.addSeries(LineSeries, { 
             color: pattern.color, 
             lineWidth: 2, 
-            lineStyle: 0,
+            lineStyle: 2, // Dashed for projection
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false
@@ -2479,33 +2534,44 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
         patternLowerSeries.applyOptions({ color: pattern.color });
     }
 
+    const lastBar = currentChartData[currentChartData.length - 1];
+
     if (pattern.type.includes('TRIANGLE') || pattern.type === 'RECTANGLE') {
-        const p1 = pattern.points[0]; const p2 = pattern.points[1];
-        const t1 = pattern.points[2]; const t2 = pattern.points[3];
+        const p1 = pattern.points[0];
+        const t1 = pattern.points[2];
         
-        // Basic legs
-        patternUpperSeries.setData([{ time: p1.time, value: p1.value }, { time: p2.time, value: p2.value }]);
-        patternLowerSeries.setData([{ time: t1.time, value: t1.value }, { time: t2.time, value: t2.value }]);
+        // Project to current time
+        const lastIdx = currentChartData.length - 1;
+        const upperVal = pattern.upperIntercept + pattern.upperSlope * lastIdx;
+        const lowerVal = pattern.lowerIntercept + pattern.lowerSlope * lastIdx;
+
+        patternUpperSeries.setData([
+            { time: p1.time, value: p1.value }, 
+            { time: lastBar.time, value: upperVal }
+        ]);
+        patternLowerSeries.setData([
+            { time: t1.time, value: t1.value }, 
+            { time: lastBar.time, value: lowerVal }
+        ]);
     } else if (pattern.type.includes('DOUBLE')) {
         const points = pattern.points.sort((a, b) => a.index - b.index);
         if (points.length >= 2) {
+            const points = pattern.points.sort((a, b) => a.index - b.index);
             patternUpperSeries.setData(points.map(p => ({ time: p.time, value: p.value })));
             patternLowerSeries.setData([]);
         }
-    } else if (pattern.type === 'HEAD_AND_SHOULDERS' || pattern.type === 'INVERTED_HS' || pattern.type === 'TRIPLE_TOP' || pattern.type === 'TRIPLE_BOTTOM') {
-        const points = pattern.points.sort((a, b) => a.index - b.index);
-        patternUpperSeries.setData(points.map(p => ({ time: p.time, value: p.value })));
-        patternLowerSeries.setData([]);
     }
 }
 
 function renderStructureLabels(pips, chartInstance) {
-    if (!pips || pips.length < 3 || !chartInstance) return;
+    if (!pips || pips.length < 5 || !chartInstance) return;
     
     const markers = [];
+    const peaks = [];
+    const troughs = [];
+
+    // Identify peaks and troughs first
     for (let i = 1; i < pips.length - 1; i++) {
-        const prev = pips[i-1];
-        const curr = pips[i];
         const next = pips[i+1];
         
         let label = '';
@@ -2550,7 +2616,7 @@ function renderStructureLabels(pips, chartInstance) {
     
     // Set markers on the invisible series to show them on the chart
     if (structureLabelSeries) {
-        createSeriesMarkers(structureLabelSeries, markers);
+        structureLabelSeries.setMarkers(markers);
     }
 }
 
@@ -2600,6 +2666,13 @@ function renderTacticalChart(candles) {
         if (pipChartInstance) {
             pipChartInstance.remove();
             pipChartInstance = null;
+            pipLineSeries = null;
+            patternOverlaySeries = null;
+            structureLabelSeries = null;
+            patternLabelSeries = null;
+            patternUpperSeries = null;
+            patternLowerSeries = null;
+            pipGhostSeries = null;
         }
         return;
     }
@@ -2610,6 +2683,14 @@ function renderTacticalChart(candles) {
 
     if (pipChartInstance) {
         pipChartInstance.remove();
+        pipChartInstance = null;
+        pipLineSeries = null;
+        patternOverlaySeries = null;
+        structureLabelSeries = null;
+        patternLabelSeries = null;
+        patternUpperSeries = null;
+        patternLowerSeries = null;
+        pipGhostSeries = null;
     }
 
     pipChartInstance = createChart(pipContainer, {
@@ -2721,13 +2802,61 @@ function renderTacticalChart(candles) {
         patternLabel.style.background = `${p.color}33`;
         patternLabel.style.color = p.color;
         patternLabel.style.borderColor = `${p.color}4d`;
+        
+        // Update Sidebar Panel
+        const sidePattern = document.getElementById('tactical-pattern-name');
+        if (sidePattern) {
+            sidePattern.textContent = p.name;
+            sidePattern.style.color = p.color;
+        }
+
         renderPatternGeometry(p, pips, pipChartInstance);
         renderPatternLabels(p, tacticalSignal, candles, pipChartInstance);
     } else {
         patternLabel.style.display = 'none';
+        const sidePattern = document.getElementById('tactical-pattern-name');
+        if (sidePattern) sidePattern.textContent = 'NONE';
     }
 
     renderStructureLabels(pips, pipChartInstance);
+    
+    // Render Validation Status
+    let statusBadge = document.getElementById('tactical-validation-status');
+    const validationContainer = document.getElementById('tactical-validation-container');
+    
+    if (!statusBadge) {
+        statusBadge = document.createElement('div');
+        statusBadge.id = 'tactical-validation-status';
+        statusBadge.className = 'validation-badge';
+        patternLabel.parentNode.insertBefore(statusBadge, patternLabel);
+    }
+    
+    if (validationStatus.ticker === currentTicker) {
+        const icon = validationStatus.status === 'SUCCESS' ? 'check-circle' : (validationStatus.status === 'WARNING' ? 'exclamation-triangle' : 'times-circle');
+        const color = validationStatus.status === 'SUCCESS' ? '#22c55e' : (validationStatus.status === 'WARNING' ? '#eab308' : '#ef4444');
+        const text = validationStatus.status === 'SUCCESS' ? 'Verified' : (validationStatus.status === 'WARNING' ? 'Data Lag' : 'Sync Error');
+        
+        const badgeHtml = `<i class="fa-solid fa-${icon}"></i> ${text}`;
+        statusBadge.innerHTML = badgeHtml;
+        statusBadge.style.color = color;
+        statusBadge.style.display = 'inline-flex';
+        statusBadge.title = validationStatus.status === 'WARNING' ? `Diff: ${(validationStatus.diff*100).toFixed(2)}%` : '';
+        
+        if (validationContainer) {
+            validationContainer.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="tactical-label">Data Validity</span>
+                    <span style="color: ${color}; font-weight: 600; font-size: 13px;">${badgeHtml}</span>
+                </div>
+                ${validationStatus.yahooPrice ? `<div style="display: flex; justify-content: space-between; font-size: 11px; opacity: 0.6;">
+                    <span>Yahoo Reference</span>
+                    <span>$${validationStatus.yahooPrice.toFixed(2)}</span>
+                </div>` : ''}
+            `;
+        }
+    } else {
+        statusBadge.style.display = 'none';
+    }
 
     let probContainer = document.getElementById('tactical-probability');
     if (!probContainer) {

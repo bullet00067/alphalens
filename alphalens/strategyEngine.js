@@ -376,19 +376,34 @@ function checkTriangle(peaks, troughs) {
     // Ascending Triangle: Flat top, rising bottom
     if (Math.abs(normUpper) < tol && normLower > tol) {
         const height = p1.value - t1.value;
-        return { type: 'ASCENDING_TRIANGLE', name: '上升三角', color: '#22c55e', points: [p1, p2, t1, t2], height };
+        return { 
+            type: 'ASCENDING_TRIANGLE', name: '上升三角', color: '#22c55e', 
+            points: [p1, p2, t1, t2], height,
+            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+        };
     }
     
     // Descending Triangle: Falling top, flat bottom
     if (normUpper < -tol && Math.abs(normLower) < tol) {
         const height = p1.value - t1.value;
-        return { type: 'DESCENDING_TRIANGLE', name: '下降三角', color: '#ef4444', points: [p1, p2, t1, t2], height };
+        return { 
+            type: 'DESCENDING_TRIANGLE', name: '下降三角', color: '#ef4444', 
+            points: [p1, p2, t1, t2], height,
+            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+        };
     }
     
     // Symmetrical Triangle: Falling top, rising bottom
     if (normUpper < -tol && normLower > tol) {
         const height = p1.value - t1.value;
-        return { type: 'SYMMETRICAL_TRIANGLE', name: '對稱三角', color: '#eab308', points: [p1, p2, t1, t2], height };
+        return { 
+            type: 'SYMMETRICAL_TRIANGLE', name: '對稱三角', color: '#eab308', 
+            points: [p1, p2, t1, t2], height,
+            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+        };
     }
     
     
@@ -416,7 +431,12 @@ function checkRectangle(peaks, troughs) {
     // Rectangle: Flat top, flat bottom
     if (Math.abs(normUpper) < tol && Math.abs(normLower) < tol) {
         const height = p1.value - t1.value;
-        return { type: 'RECTANGLE', name: '矩形區間', color: '#3b82f6', points: [p1, p2, t1, t2], height };
+        return { 
+            type: 'RECTANGLE', name: '矩形區間', color: '#3b82f6', 
+            points: [p1, p2, t1, t2], height,
+            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+        };
     }
     
     return null;
@@ -542,12 +562,19 @@ export function calculateProbability(signal, trend, candles) {
     // 4. Pattern Impact (20%)
     if (signal.patterns && signal.patterns.length > 0) {
         const p = signal.patterns[0];
-        if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'SYMMETRICAL_TRIANGLE', 'RECTANGLE'].includes(p.type)) score += 10;
-        if (['DESCENDING_TRIANGLE', 'DOUBLE_TOP'].includes(p.type)) score -= 10;
+        // Breakout boost
+        const isBreakout = signal.details && signal.details.reason && signal.details.reason.includes('BREAKOUT');
+        
+        if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'SYMMETRICAL_TRIANGLE', 'RECTANGLE'].includes(p.type)) {
+            score += isBreakout ? 20 : 10;
+        }
+        if (['DESCENDING_TRIANGLE', 'DOUBLE_TOP'].includes(p.type)) {
+            score -= isBreakout ? 20 : 10;
+        }
     }
 
     // Clamp score
-    const bullish = Math.min(95, Math.max(5, score));
+    const bullish = Math.min(98, Math.max(2, score));
     const bearish = 100 - bullish;
 
     return { bullish, bearish };
@@ -586,18 +613,22 @@ export function generatePIPSignal(candles, providedPips = null) {
             const lowerVal = t1.value + calculateSlope(t1, t2) * (candles.length - 1 - t1.index);
             
             if (last.close > upperVal && prev.close <= upperVal) {
-                finalSignal = { signal: 'BUY', text: `🚀 向上突破${p.name}`, color: '#22c55e', details: { reason: 'BREAKOUT_UP', patterns }, confidence: 0.9 };
+                const targetPrice = last.close + p.height;
+                finalSignal = { signal: 'BUY', text: `🚀 向上突破${p.name}`, color: '#22c55e', details: { reason: 'BREAKOUT_UP', patterns, targetPrice }, confidence: 0.9 };
             } else if (last.close < lowerVal && prev.close >= lowerVal) {
-                finalSignal = { signal: 'SELL', text: `⚠️ 向下跌破${p.name}`, color: '#ef4444', details: { reason: 'BREAKOUT_DOWN', patterns }, confidence: 0.9 };
+                const targetPrice = last.close - p.height;
+                finalSignal = { signal: 'SELL', text: `⚠️ 向下跌破${p.name}`, color: '#ef4444', details: { reason: 'BREAKOUT_DOWN', patterns, targetPrice }, confidence: 0.9 };
             }
         }
         
         // 2. Double Pattern Breakout
         if (finalSignal.signal === 'NEUTRAL') {
             if (p.type === 'DOUBLE_BOTTOM' && last.close > p.neckline && prev.close <= p.neckline) {
-                finalSignal = { signal: 'BUY', text: `🚀 W底頸線突破`, color: '#22c55e', details: { reason: 'W_BREAKOUT', patterns }, confidence: 0.9 };
+                const targetPrice = last.close + p.height;
+                finalSignal = { signal: 'BUY', text: `🚀 W底頸線突破`, color: '#22c55e', details: { reason: 'W_BREAKOUT', patterns, targetPrice }, confidence: 0.9 };
             } else if (p.type === 'DOUBLE_TOP' && last.close < p.neckline && prev.close >= p.neckline) {
-                finalSignal = { signal: 'SELL', text: `⚠️ M頭頸線跌破`, color: '#ef4444', details: { reason: 'M_BREAKOUT', patterns }, confidence: 0.9 };
+                const targetPrice = last.close - p.height;
+                finalSignal = { signal: 'SELL', text: `⚠️ M頭頸線跌破`, color: '#ef4444', details: { reason: 'M_BREAKOUT', patterns, targetPrice }, confidence: 0.9 };
             }
         }
     }

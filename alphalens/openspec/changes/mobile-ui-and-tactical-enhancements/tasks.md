@@ -24,3 +24,7 @@
   - [x] Implement `fetchWithProxy` using `corsproxy.io` for production data fetching.
   - [x] Parallelize data requests using `Promise.all` to reduce latency.
   - [x] Implement in-memory caching for API responses.
+  - [x] Fix production unresponsiveness due to top-level Firebase initialization crash.
+  - [x] Implement resilient error handling for missing environment variables (VITE_*).
+  - [x] Prioritize global event listener initialization to prevent UI locking on startup errors.
+  - [x] Fix local Vite proxy configuration for development parity.

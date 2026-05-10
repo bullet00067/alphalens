@@ -18,3 +18,10 @@
 ## 3. Probability Prediction Model
 - **Logic**: Weighted sum of Pattern (40%), Trend (30%), RSI (15%), and MA Alignment (15%).
 - **Display**: A dual-bar or percentage display in the Tactical panel: `Bullish 65% / Bearish 35%`.
+
+## 4. Production Stability and Error Resilience
+- **Issue**: Firebase initialization crashes the entire script if API keys are missing in production environment variables (common in Render deployments without manual `.env` config).
+- **Strategy**: 
+  - **Graceful Failure**: Move Firebase initialization (`getAuth`, `getFirestore`) into `try...catch` blocks and use null-checks before any DB/Auth calls.
+  - **Early Event Binding**: Execute `initGlobalEventListeners()` as the first step in `DOMContentLoaded` to ensure the UI remains interactive (e.g., sidebar, navigation) even if specific data-fetching modules fail.
+  - **Development Parity**: Update `vite.config.js` to match production proxy targets for `/finmind` and `/twse` to ensure errors are caught during local testing.
