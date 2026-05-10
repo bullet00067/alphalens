@@ -1,0 +1,11 @@
+name: fix-tactical-patterns-and-tooltip
+schema: default
+artifacts:
+  - id: proposal
+    status: done
+  - id: design
+    status: done
+  - id: tasks
+    status: done
+apply:
+  requires: ["tasks"]

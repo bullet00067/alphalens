@@ -144,29 +144,44 @@ let currentTp2Line = null;
 
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
-    initGlobalEventListeners();
-    initAuth();
-    initNavigation();
-    initSettings();
-    initWatchlist();
-    populateDashboard();
-    initChat();
-    setupSearch();
-    initIndicators();
-    initTimeframeSwitcher();
-    initPortfolio();
-    initResponsiveNavigation();
+    const safeInit = (fn, name) => {
+        try {
+            fn();
+        } catch (e) {
+            console.error(`Error during ${name}:`, e);
+        }
+    };
+
+    safeInit(initGlobalEventListeners, 'GlobalEventListeners');
+    safeInit(initAuth, 'Auth');
+    safeInit(initNavigation, 'Navigation');
+    safeInit(initSettings, 'Settings');
+    safeInit(initWatchlist, 'Watchlist');
+    safeInit(populateDashboard, 'Dashboard');
+    safeInit(initChat, 'Chat');
+    safeInit(setupSearch, 'Search');
+    safeInit(initIndicators, 'Indicators');
+    safeInit(initTimeframeSwitcher, 'TimeframeSwitcher');
+    safeInit(initPortfolio, 'Portfolio');
+    safeInit(initResponsiveNavigation, 'ResponsiveNavigation');
     
-    document.getElementById('ask-ai-banner-btn').addEventListener('click', () => {
-        switchView('assistant-view');
-        addAiMessage("I can analyze the current market for you. Overall, the market is bullish today driven by tech stocks. What specific sector would you like me to look into?");
-    });
+    const bannerBtn = document.getElementById('ask-ai-banner-btn');
+    if (bannerBtn) {
+        bannerBtn.addEventListener('click', () => {
+            switchView('assistant-view');
+            addAiMessage("I can analyze the current market for you. Overall, the market is bullish today driven by tech stocks. What specific sector would you like me to look into?");
+        });
+    }
     
-    document.getElementById('deep-dive-btn').addEventListener('click', () => {
-        const ticker = document.getElementById('detail-ticker').textContent;
-        switchView('assistant-view');
-        addAiMessage(`Let's take a deep dive into ${ticker}. You can ask me to draw technical indicators like "Draw 20 MA" or "Draw 5 MA".`);
-    });
+    const deepDiveBtn = document.getElementById('deep-dive-btn');
+    if (deepDiveBtn) {
+        deepDiveBtn.addEventListener('click', () => {
+            const tickerEl = document.getElementById('detail-ticker');
+            const ticker = tickerEl ? tickerEl.textContent : 'selected stock';
+            switchView('assistant-view');
+            addAiMessage(`Let's take a deep dive into ${ticker}. You can ask me to draw technical indicators like "Draw 20 MA" or "Draw 5 MA".`);
+        });
+    }
 });
 
 function initGlobalEventListeners() {
@@ -1253,19 +1268,21 @@ function initWatchlist() {
     const addBtn = document.getElementById('add-watchlist-btn');
     const addInput = document.getElementById('add-watchlist-input');
 
-    addBtn.addEventListener('click', () => {
-        const ticker = addInput.value.trim().toUpperCase();
-        if (ticker && !currentWatchlist.includes(ticker)) {
-            currentWatchlist.push(ticker);
-            saveWatchlist();
-            addInput.value = '';
-            populateDashboard();
-        }
-    });
+    if (addBtn && addInput) {
+        addBtn.addEventListener('click', () => {
+            const ticker = addInput.value.trim().toUpperCase();
+            if (ticker && !currentWatchlist.includes(ticker)) {
+                currentWatchlist.push(ticker);
+                saveWatchlist();
+                addInput.value = '';
+                populateDashboard();
+            }
+        });
 
-    addInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') addBtn.click();
-    });
+        addInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addBtn.click();
+        });
+    }
 }
 
 function removeFromWatchlist(ticker, event) {
@@ -1910,42 +1927,59 @@ function renderTradingViewChart(data) {
     // Interactive Marker Hover Logic
     let lastHoveredPipTime = null;
 
-    currentStockChart.subscribeCrosshairMove((param) => {
-        if (!param.time || currentPipMarkers.length === 0) {
-            if (lastHoveredPipTime !== null) {
-                const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
-                createSeriesMarkers(candlestickSeries, cleaned);
-                lastHoveredPipTime = null;
+    function handleMarkerHover(param, chart, series, markers, candleData, lastHoveredRef) {
+        if (!param.time || markers.length === 0) {
+            if (lastHoveredRef.time !== null) {
+                const cleaned = JSON.parse(JSON.stringify(markers)).map(m => ({ ...m, text: "" }));
+                createSeriesMarkers(series, cleaned);
+                lastHoveredRef.time = null;
             }
             return;
         }
 
-        const hoveredMarker = currentPipMarkers.find(m => m.time === param.time);
+        const hoveredMarker = markers.find(m => m.time === param.time);
         
         if (hoveredMarker) {
-            if (lastHoveredPipTime !== param.time) {
-                const candle = data.find(d => d.time === param.time);
+            if (lastHoveredRef.time !== param.time) {
+                const candle = candleData.find(d => d.time === param.time);
                 if (candle) {
                     const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
-                    const updated = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => {
+                    const updated = JSON.parse(JSON.stringify(markers)).map(m => {
                         if (m.time === param.time) {
                             return { ...m, text: text };
                         } else {
                             return { ...m, text: "" };
                         }
                     });
-                    createSeriesMarkers(candlestickSeries, updated);
-                    lastHoveredPipTime = param.time;
+                    createSeriesMarkers(series, updated);
+                    lastHoveredRef.time = param.time;
                 }
             }
         } else {
-            if (lastHoveredPipTime !== null) {
-                const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
-                createSeriesMarkers(candlestickSeries, cleaned);
-                lastHoveredPipTime = null;
+            if (lastHoveredRef.time !== null) {
+                const cleaned = JSON.parse(JSON.stringify(markers)).map(m => ({ ...m, text: "" }));
+                createSeriesMarkers(series, cleaned);
+                lastHoveredRef.time = null;
             }
         }
+    }
+
+    const mainHoverState = { time: null };
+    currentStockChart.subscribeCrosshairMove((param) => {
+        handleMarkerHover(param, currentStockChart, candlestickSeries, currentPipMarkers, data, mainHoverState);
     });
+
+    // Fallback: Clear markers when mouse leaves the chart container
+    const chartContainer = document.getElementById('stockChart');
+    if (chartContainer) {
+        chartContainer.addEventListener('mouseleave', () => {
+            if (mainHoverState.time !== null) {
+                const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
+                createSeriesMarkers(candlestickSeries, cleaned);
+                mainHoverState.time = null;
+            }
+        });
+    }
 
     
     // Scale Optimization: Show exactly 60 candles by default regardless of timeframe
@@ -2263,12 +2297,16 @@ function togglePipTactical() {
     if (isPipTacticalEnabled) {
         btn.classList.add('active');
         if (insightPanel) insightPanel.style.display = 'block';
+        const pipContainer = document.getElementById('pipChart');
+        if (pipContainer) pipContainer.style.display = 'block';
         if (currentChartData) {
             renderTacticalChart(currentChartData);
         }
     } else {
         btn.classList.remove('active');
         if (insightPanel) insightPanel.style.display = 'none';
+        const pipContainer = document.getElementById('pipChart');
+        if (pipContainer) pipContainer.style.display = 'none';
         if (pipChartInstance) {
             pipChartInstance.remove();
             pipChartInstance = null;
@@ -2349,10 +2387,14 @@ function initChat() {
     const sendBtn = document.getElementById('send-msg-btn');
     const chatInput = document.getElementById('chat-input');
 
-    sendBtn.addEventListener('click', handleUserMessage);
-    chatInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') handleUserMessage();
-    });
+    if (sendBtn) {
+        sendBtn.addEventListener('click', handleUserMessage);
+    }
+    if (chatInput) {
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleUserMessage();
+        });
+    }
 }
 
 function handleUserMessage() {
@@ -2513,26 +2555,36 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
 
     if (pattern.type.includes('TRIANGLE') || pattern.type === 'RECTANGLE') {
         const p1 = pattern.points[0];
+        const p2 = pattern.points[1];
         const t1 = pattern.points[2];
+        const t2 = pattern.points[3];
         
-        // Project to current time
+        // Calculate full projection to the end of the chart
         const lastIdx = currentChartData.length - 1;
-        const upperVal = pattern.upperIntercept + pattern.upperSlope * lastIdx;
-        const lowerVal = pattern.lowerIntercept + pattern.lowerSlope * lastIdx;
+        
+        const upperData = [
+            { time: p1.time, value: p1.value },
+            { time: p2.time, value: p2.value }
+        ];
+        
+        const lowerData = [
+            { time: t1.time, value: t1.value },
+            { time: t2.time, value: t2.value }
+        ];
 
-        patternUpperSeries.setData([
-            { time: p1.time, value: p1.value }, 
-            { time: lastBar.time, value: upperVal }
-        ]);
-        patternLowerSeries.setData([
-            { time: t1.time, value: t1.value }, 
-            { time: lastBar.time, value: lowerVal }
-        ]);
+        // Add projection point
+        const upperProj = p1.value + pattern.upperSlope * (lastIdx - p1.index);
+        const lowerProj = t1.value + pattern.lowerSlope * (lastIdx - t1.index);
+        
+        upperData.push({ time: lastBar.time, value: upperProj });
+        lowerData.push({ time: lastBar.time, value: lowerProj });
+
+        patternUpperSeries.setData(upperData);
+        patternLowerSeries.setData(lowerData);
     } else if (pattern.type.includes('DOUBLE')) {
-        const points = pattern.points.sort((a, b) => a.index - b.index);
-        if (points.length >= 2) {
-            const points = pattern.points.sort((a, b) => a.index - b.index);
-            patternUpperSeries.setData(points.map(p => ({ time: p.time, value: p.value })));
+        const sortedPoints = [...pattern.points].sort((a, b) => a.index - b.index);
+        if (sortedPoints.length >= 2) {
+            patternUpperSeries.setData(sortedPoints.map(p => ({ time: p.time, value: p.value })));
             patternLowerSeries.setData([]);
         }
     }
@@ -2552,6 +2604,9 @@ function renderStructureLabels(pips, chartInstance) {
         let label = '';
         let color = '#94a3b8';
         let position = 'aboveBar';
+        
+        const prev = pips[i-1];
+        const curr = pips[i];
         
         if (curr.value > prev.value && curr.value > next.value) {
             // Peak - Check if HH or LH
@@ -2600,6 +2655,17 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
     
     const markers = [];
     
+    // 1. Add Pattern Name Marker at the beginning of the pattern
+    const startPoint = pattern.points[0];
+    markers.push({
+        time: startPoint.time,
+        position: 'aboveBar',
+        color: '#ffffff',
+        shape: 'circle',
+        text: `【 ${pattern.name} 】`,
+        size: 1
+    });
+
     if (pattern.points.length >= 4) {
         const p1 = pattern.points[0]; const p2 = pattern.points[1];
         const t1 = pattern.points[2]; const t2 = pattern.points[3];
@@ -2610,16 +2676,19 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
             markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '支撐 SUPPORT', size: 1 });
         } else if (pattern.type === 'ASCENDING_TRIANGLE') {
             markers.push({ time: p2.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '阻力 RESISTANCE', size: 1 });
-            markers.push({ time: t1.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '較高的低點 HIGHER LOWS', size: 1 });
-            markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '較高的低點 HIGHER LOWS', size: 1 });
+            markers.push({ time: t1.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '高底 HL', size: 1 });
+            markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '高底 HL', size: 1 });
         } else if (pattern.type === 'DESCENDING_TRIANGLE') {
-            markers.push({ time: p1.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '較低的高點 LOWER HIGHS', size: 1 });
-            markers.push({ time: p2.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '較低的高點 LOWER HIGHS', size: 1 });
+            markers.push({ time: p1.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '低頂 LH', size: 1 });
+            markers.push({ time: p2.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '低頂 LH', size: 1 });
             markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '支撐 SUPPORT', size: 1 });
+        } else if (pattern.type === 'SYMMETRICAL_TRIANGLE') {
+            markers.push({ time: p2.time, position: 'aboveBar', color: pattern.color, shape: 'arrowDown', text: '低頂 LH', size: 1 });
+            markers.push({ time: t2.time, position: 'belowBar', color: pattern.color, shape: 'arrowUp', text: '高底 HL', size: 1 });
         }
     }
 
-    // Add Breakout label if there is a signal
+    // 2. Add Breakout label if there is a signal
     if (tacticalSignal.signal !== 'NEUTRAL' && tacticalSignal.details && tacticalSignal.details.reason && tacticalSignal.details.reason.includes('BREAKOUT')) {
         const lastCandle = candles[candles.length - 1];
         markers.push({
@@ -2627,7 +2696,7 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
             position: tacticalSignal.signal === 'BUY' ? 'belowBar' : 'aboveBar',
             color: tacticalSignal.color,
             shape: tacticalSignal.signal === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: '突破 BREAKOUT',
+            text: tacticalSignal.signal === 'BUY' ? '突破 BREAKOUT 🚀' : '跌破 BREAKOUT ⚠️',
             size: 2
         });
     }
@@ -2749,14 +2818,31 @@ function renderTacticalChart(candles) {
                 pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
             }
         });
+        const tacticalHoverState = { time: null };
         pipChartInstance.subscribeCrosshairMove(param => {
             if (!currentStockChart || !candlestickSeries) return;
+            
+            // Marker hover for tactical chart
+            handleMarkerHover(param, pipChartInstance, pipLineSeries, currentPipMarkers, candles, tacticalHoverState);
+
             if (!param.time) {
                 currentStockChart.clearCrosshairPosition();
             } else {
                 currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries);
             }
         });
+
+        // Fallback for tactical chart
+        const pipChartContainer = document.getElementById('pipChart');
+        if (pipChartContainer) {
+            pipChartContainer.addEventListener('mouseleave', () => {
+                if (tacticalHoverState.time !== null) {
+                    const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
+                    createSeriesMarkers(pipLineSeries, cleaned);
+                    tacticalHoverState.time = null;
+                }
+            });
+        }
 
         // Sync initial range
         const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
