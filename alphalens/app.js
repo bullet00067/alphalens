@@ -1931,7 +1931,7 @@ function renderTradingViewChart(data) {
     function clearAllLabels(series, markers) {
         if (!markers || markers.length === 0) return;
         const cleaned = markers.map(m => ({ ...m, text: "" }));
-        series.setMarkers(cleaned);
+        createSeriesMarkers(series, cleaned);
     }
 
     currentStockChart.subscribeCrosshairMove((param) => {
@@ -1953,7 +1953,7 @@ function renderTradingViewChart(data) {
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
-                    candlestickSeries.setMarkers(updated);
+                    createSeriesMarkers(candlestickSeries, updated);
                     mainHoverState.time = param.time;
                 }
             }
@@ -2866,7 +2866,34 @@ function renderTacticalChart(candles) {
             if (!currentStockChart || !candlestickSeries) return;
             
             // Marker hover for tactical chart
-            handleMarkerHover(param, pipChartInstance, pipLineSeries, currentPipMarkers, candles, tacticalHoverState);
+            if (typeof handleMarkerHover === 'function') {
+                handleMarkerHover(param, pipChartInstance, pipLineSeries, currentPipMarkers, candles, tacticalHoverState);
+            } else {
+                // Inline handle for tactical chart if helper missing
+                if (!param.time) {
+                    if (tacticalHoverState.time !== null) {
+                        clearAllLabels(pipLineSeries, currentPipMarkers);
+                        tacticalHoverState.time = null;
+                    }
+                } else {
+                    const hoveredMarker = currentPipMarkers.find(m => m.time === param.time);
+                    if (hoveredMarker && tacticalHoverState.time !== param.time) {
+                        const candle = candles.find(d => d.time === param.time);
+                        if (candle) {
+                            const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
+                            const updated = currentPipMarkers.map(m => ({
+                                ...m,
+                                text: m.time === param.time ? text : ""
+                            }));
+                            createSeriesMarkers(pipLineSeries, updated);
+                            tacticalHoverState.time = param.time;
+                        }
+                    } else if (!hoveredMarker && tacticalHoverState.time !== null) {
+                        clearAllLabels(pipLineSeries, currentPipMarkers);
+                        tacticalHoverState.time = null;
+                    }
+                }
+            }
 
             if (!param.time) {
                 currentStockChart.clearCrosshairPosition();
@@ -2894,11 +2921,23 @@ function renderTacticalChart(candles) {
 
     if (tacticalSignal && tacticalSignal.patterns && tacticalSignal.patterns.length > 0) {
         const p = tacticalSignal.patterns[0];
-        patternLabel.textContent = `PATTERN: ${p.name}`;
-        patternLabel.style.display = 'block';
+        const prob = p.probability || { bullish: 50, bearish: 50 };
+        patternLabel.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span>PATTERN: <strong>${p.name}</strong></span>
+                <span style="font-size: 0.85em; opacity: 0.9;">
+                    <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
+                    | 
+                    <i class="fa-solid fa-arrow-trend-down" style="color: #ef4444"></i> ${prob.bearish}%
+                </span>
+            </div>
+        `;
+        patternLabel.style.display = 'flex';
         patternLabel.style.background = `${p.color}33`;
         patternLabel.style.color = p.color;
         patternLabel.style.borderColor = `${p.color}4d`;
+        patternLabel.style.padding = '8px 12px';
+        patternLabel.style.borderRadius = '6px';
         
         // Update Sidebar Panel
         const sidePattern = document.getElementById('tactical-pattern-name');

@@ -380,7 +380,8 @@ function checkTriangle(peaks, troughs) {
             type: 'ASCENDING_TRIANGLE', name: '上升三角', color: '#22c55e', 
             points: [p1, p2, t1, t2], height,
             upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
+            probability: { bullish: 70, bearish: 30 }
         };
     }
     
@@ -391,7 +392,8 @@ function checkTriangle(peaks, troughs) {
             type: 'DESCENDING_TRIANGLE', name: '下降三角', color: '#ef4444', 
             points: [p1, p2, t1, t2], height,
             upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
+            probability: { bullish: 30, bearish: 70 }
         };
     }
     
@@ -402,7 +404,8 @@ function checkTriangle(peaks, troughs) {
             type: 'SYMMETRICAL_TRIANGLE', name: '對稱三角', color: '#eab308', 
             points: [p1, p2, t1, t2], height,
             upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
+            probability: { bullish: 50, bearish: 50 }
         };
     }
     
@@ -435,7 +438,8 @@ function checkRectangle(peaks, troughs) {
             type: 'RECTANGLE', name: '矩形區間', color: '#3b82f6', 
             points: [p1, p2, t1, t2], height,
             upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index
+            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
+            probability: { bullish: 50, bearish: 50 }
         };
     }
     
@@ -459,7 +463,11 @@ function checkDoublePattern(peaks, troughs) {
             const relevantPips = peaks.filter(p => p.index > t1.index && p.index < t2.index);
             const midPeak = relevantPips.length > 0 ? Math.max(...relevantPips.map(p => p.value)) : t1.value * 1.05;
             const height = midPeak - ((t1.value + t2.value) / 2);
-            return { type: 'DOUBLE_BOTTOM', name: 'W底 (雙重底)', color: '#22c55e', points: [t1, t2], height, neckline: midPeak };
+            return { 
+                type: 'DOUBLE_BOTTOM', name: 'W底 (雙重底)', color: '#22c55e', 
+                points: [t1, t2], height, neckline: midPeak,
+                probability: { bullish: 85, bearish: 15 }
+            };
         }
     }
     
@@ -473,7 +481,11 @@ function checkDoublePattern(peaks, troughs) {
             const relevantTroughs = troughs.filter(t => t.index > p1.index && t.index < p2.index);
             const midTrough = relevantTroughs.length > 0 ? Math.min(...relevantTroughs.map(t => t.value)) : p1.value * 0.95;
             const height = ((p1.value + p2.value) / 2) - midTrough;
-            return { type: 'DOUBLE_TOP', name: 'M頭 (雙重頂)', color: '#ef4444', points: [p1, p2], height, neckline: midTrough };
+            return { 
+                type: 'DOUBLE_TOP', name: 'M頭 (雙重頂)', color: '#ef4444', 
+                points: [p1, p2], height, neckline: midTrough,
+                probability: { bullish: 15, bearish: 85 }
+            };
         }
     }
     

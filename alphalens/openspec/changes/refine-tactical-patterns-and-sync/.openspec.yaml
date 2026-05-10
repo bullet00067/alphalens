@@ -1,0 +1,11 @@
+name: refine-tactical-patterns-and-sync
+schema: default
+artifacts:
+  - id: proposal
+    status: done
+  - id: design
+    status: done
+  - id: tasks
+    status: done
+apply:
+  requires: ["tasks"]
