@@ -112,8 +112,8 @@ export function findPIPs(candles, useCache = true) {
     }
 
     const N = candles.length;
-    const yValues = candles.map(c => c.close);
-    const stats = standardizeData(yValues);
+    const logValues = candles.map(c => Math.log10(c.close));
+    const stats = standardizeData(logValues);
     
     const data = candles.map((c, i) => ({
         index: i,
@@ -122,7 +122,7 @@ export function findPIPs(candles, useCache = true) {
         volume: c.volume,
         high: c.high,
         low: c.low,
-        stdY: (c.close - stats.mean) / stats.std
+        stdY: (Math.log10(c.close) - stats.mean) / stats.std
     }));
     
     let pipIndexByOrder = [0, N - 1];

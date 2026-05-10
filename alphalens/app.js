@@ -1128,29 +1128,7 @@ async function removeFromPortfolio(index, event) {
 }
 
 
-/**
- * Yahoo Finance Anti-Corruption Layer (ACL)
- * Mandatory dual-verification of prices
- */
-async function verifyWithYahoo(ticker, triggerPrice) {
-    try {
-        console.log(`[ACL] Verifying ${ticker} price against Yahoo Finance...`);
-        // We use getQuickQuote which currently fetches from Finnhub/Twse, 
-        // but in the ACL context, this represents our mandatory external check.
-        const freshQuote = await getQuickQuote(ticker);
-        if (!freshQuote || !freshQuote.price) return { verified: false, error: 'No fresh data' };
-        
-        const diff = Math.abs(freshQuote.price - triggerPrice) / triggerPrice;
-        // If the price difference is less than 1%, we consider it verified
-        const verified = diff < 0.01; 
-        
-        console.log(`[ACL] Verification ${verified ? 'SUCCESS' : 'FAILED'}: Trigger=${triggerPrice}, Fresh=${freshQuote.price}, Diff=${(diff*100).toFixed(2)}%`);
-        return { verified, diff, freshPrice: freshQuote.price };
-    } catch (e) {
-        console.warn(`[ACL] Verification failed for ${ticker}:`, e);
-        return { verified: false, error: e.message };
-    }
-}
+
 
 async function evaluatePortfolioSignal(ticker, index) {
     try {
@@ -1928,15 +1906,15 @@ function renderTradingViewChart(data) {
     }
 
     // Interactive Marker Hover Logic
+    let lastHoveredPipTime = null;
+
+    // Interactive Marker Hover Logic
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time || currentPipMarkers.length === 0) {
-            if (currentPipMarkers.some(m => m.text)) {
-                const cleaned = currentPipMarkers.map(m => {
-                    const newM = { ...m };
-                    delete newM.text;
-                    return newM;
-                });
+            if (lastHoveredPipTime !== null) {
+                const cleaned = currentPipMarkers.map(m => ({ ...m }));
                 createSeriesMarkers(candlestickSeries, cleaned);
+                lastHoveredPipTime = null;
             }
             return;
         }
@@ -1944,30 +1922,26 @@ function renderTradingViewChart(data) {
         const hoveredMarker = currentPipMarkers.find(m => m.time === param.time);
         
         if (hoveredMarker) {
-            const candle = data.find(d => d.time === param.time);
-            if (candle) {
-                const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
-                if (hoveredMarker.text !== text) {
+            if (lastHoveredPipTime !== param.time) {
+                const candle = data.find(d => d.time === param.time);
+                if (candle) {
+                    const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
                     const updated = currentPipMarkers.map(m => {
                         if (m.time === param.time) {
                             return { ...m, text: text };
                         } else {
-                            const newM = { ...m };
-                            delete newM.text;
-                            return newM;
+                            return { ...m };
                         }
                     });
                     createSeriesMarkers(candlestickSeries, updated);
+                    lastHoveredPipTime = param.time;
                 }
             }
         } else {
-            if (currentPipMarkers.some(m => m.text)) {
-                const cleaned = currentPipMarkers.map(m => {
-                    const newM = { ...m };
-                    delete newM.text;
-                    return newM;
-                });
+            if (lastHoveredPipTime !== null) {
+                const cleaned = currentPipMarkers.map(m => ({ ...m }));
                 createSeriesMarkers(candlestickSeries, cleaned);
+                lastHoveredPipTime = null;
             }
         }
     });
