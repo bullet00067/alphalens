@@ -1846,7 +1846,8 @@ function renderTradingViewChart(data) {
         crosshair: { mode: CrosshairMode.Normal },
         rightPriceScale: { 
             borderColor: 'rgba(255,255,255,0.1)',
-            minimumWidth: 80
+            minimumWidth: 100, // Fixed width to ensure alignment
+            borderVisible: false
         },
         timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
     });
@@ -1925,56 +1926,49 @@ function renderTradingViewChart(data) {
     }
 
     // Interactive Marker Hover Logic
-    let lastHoveredPipTime = null;
+    const mainHoverState = { time: null };
 
-    function handleMarkerHover(param, chart, series, markers, candleData, lastHoveredRef) {
-        if (!param.time || markers.length === 0) {
-            if (lastHoveredRef.time !== null) {
-                const cleaned = JSON.parse(JSON.stringify(markers)).map(m => ({ ...m, text: "" }));
-                createSeriesMarkers(series, cleaned);
-                lastHoveredRef.time = null;
+    function clearAllLabels(series, markers) {
+        if (!markers || markers.length === 0) return;
+        const cleaned = markers.map(m => ({ ...m, text: "" }));
+        series.setMarkers(cleaned);
+    }
+
+    currentStockChart.subscribeCrosshairMove((param) => {
+        if (!param.time) {
+            if (mainHoverState.time !== null) {
+                clearAllLabels(candlestickSeries, currentPipMarkers);
+                mainHoverState.time = null;
             }
             return;
         }
 
-        const hoveredMarker = markers.find(m => m.time === param.time);
-        
+        const hoveredMarker = currentPipMarkers.find(m => m.time === param.time);
         if (hoveredMarker) {
-            if (lastHoveredRef.time !== param.time) {
-                const candle = candleData.find(d => d.time === param.time);
+            if (mainHoverState.time !== param.time) {
+                const candle = data.find(d => d.time === param.time);
                 if (candle) {
                     const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
-                    const updated = JSON.parse(JSON.stringify(markers)).map(m => {
-                        if (m.time === param.time) {
-                            return { ...m, text: text };
-                        } else {
-                            return { ...m, text: "" };
-                        }
-                    });
-                    createSeriesMarkers(series, updated);
-                    lastHoveredRef.time = param.time;
+                    const updated = currentPipMarkers.map(m => ({
+                        ...m,
+                        text: m.time === param.time ? text : ""
+                    }));
+                    candlestickSeries.setMarkers(updated);
+                    mainHoverState.time = param.time;
                 }
             }
-        } else {
-            if (lastHoveredRef.time !== null) {
-                const cleaned = JSON.parse(JSON.stringify(markers)).map(m => ({ ...m, text: "" }));
-                createSeriesMarkers(series, cleaned);
-                lastHoveredRef.time = null;
-            }
+        } else if (mainHoverState.time !== null) {
+            clearAllLabels(candlestickSeries, currentPipMarkers);
+            mainHoverState.time = null;
         }
-    }
-
-    const mainHoverState = { time: null };
-    currentStockChart.subscribeCrosshairMove((param) => {
-        handleMarkerHover(param, currentStockChart, candlestickSeries, currentPipMarkers, data, mainHoverState);
     });
 
     // Fallback: Clear markers when mouse leaves the chart container
+    const chartContainer = document.getElementById('stockChart');
     if (chartContainer) {
         chartContainer.addEventListener('mouseleave', () => {
             if (mainHoverState.time !== null) {
-                const cleaned = JSON.parse(JSON.stringify(currentPipMarkers)).map(m => ({ ...m, text: "" }));
-                createSeriesMarkers(candlestickSeries, cleaned);
+                clearAllLabels(candlestickSeries, currentPipMarkers);
                 mainHoverState.time = null;
             }
         });
@@ -2772,7 +2766,8 @@ function renderTacticalChart(candles) {
         },
         rightPriceScale: { 
             borderVisible: false,
-            minimumWidth: 80
+            minimumWidth: 100, // Same fixed width as main chart
+            lastValueVisible: false
         },
         crosshair: { mode: CrosshairMode.Normal }
     });
@@ -2842,19 +2837,21 @@ function renderTacticalChart(candles) {
     
     // --- Sync Logic ---
     if (currentStockChart) {
+        // Initial Range Sync
+        const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
+        if (mainRange) {
+            pipChartInstance.timeScale().setVisibleLogicalRange(mainRange);
+        } else {
+            pipChartInstance.timeScale().setVisibleLogicalRange({ from: candles.length - 60, to: candles.length - 1 });
+        }
+
         currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
             if (!range || !pipChartInstance) return;
-            const currentRange = pipChartInstance.timeScale().getVisibleLogicalRange();
-            if (!areRangesEqual(range, currentRange)) {
-                pipChartInstance.timeScale().setVisibleLogicalRange(range);
-            }
+            pipChartInstance.timeScale().setVisibleLogicalRange(range);
         });
         pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
             if (!range || !currentStockChart) return;
-            const currentRange = currentStockChart.timeScale().getVisibleLogicalRange();
-            if (!areRangesEqual(range, currentRange)) {
-                currentStockChart.timeScale().setVisibleLogicalRange(range);
-            }
+            currentStockChart.timeScale().setVisibleLogicalRange(range);
         });
 
         currentStockChart.subscribeCrosshairMove(param => {
