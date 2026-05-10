@@ -1964,7 +1964,6 @@ function renderTradingViewChart(data) {
     });
 
     // Fallback: Clear markers when mouse leaves the chart container
-    const chartContainer = document.getElementById('stockChart');
     if (chartContainer) {
         chartContainer.addEventListener('mouseleave', () => {
             if (mainHoverState.time !== null) {
@@ -2888,13 +2887,6 @@ function renderTacticalChart(candles) {
             });
         }
 
-        // Sync initial range
-        const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
-        if (mainRange) {
-            setTimeout(() => {
-                if (pipChartInstance) pipChartInstance.timeScale().setVisibleLogicalRange(mainRange);
-            }, 100);
-        }
     }
 
     const tacticalSignal = typeof generatePIPSignal === 'function' ? generatePIPSignal(candles) : { patterns: [], probability: { bullish: 50, bearish: 50 } };
