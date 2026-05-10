@@ -1908,15 +1908,15 @@ function renderTradingViewChart(data) {
                     };
                 });
                 currentPipMarkers = initialMarkers;
-                candlestickSeries.setMarkers(initialMarkers);
+                createSeriesMarkers(candlestickSeries, initialMarkers);
             } else {
-                candlestickSeries.setMarkers([]);
+                createSeriesMarkers(candlestickSeries, []);
             }
         } catch (e) {
             console.error("Initial PIP markers failed:", e);
         }
     } else {
-        candlestickSeries.setMarkers([]);
+        createSeriesMarkers(candlestickSeries, []);
     }
 
     // Interactive Marker Hover Logic
@@ -1931,7 +1931,7 @@ function renderTradingViewChart(data) {
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time) {
             if (mainHoverState.time !== null) {
-                candlestickSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
+                createSeriesMarkers(candlestickSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
                 mainHoverState.time = null;
             }
             return;
@@ -1947,12 +1947,12 @@ function renderTradingViewChart(data) {
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
-                    candlestickSeries.setMarkers(updated);
+                    createSeriesMarkers(candlestickSeries, updated);
                     mainHoverState.time = param.time;
                 }
             }
         } else if (mainHoverState.time !== null) {
-            candlestickSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
+            createSeriesMarkers(candlestickSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
             mainHoverState.time = null;
         }
     });
@@ -2876,11 +2876,11 @@ function renderTacticalChart(candles) {
                                 ...m,
                                 text: m.time === param.time ? text : ""
                             }));
-                            pipLineSeries.setMarkers(updated);
+                            createSeriesMarkers(pipLineSeries, updated);
                             tacticalHoverState.time = param.time;
                         }
                     } else if (!hoveredMarker && tacticalHoverState.time !== null) {
-                        pipLineSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
+                        createSeriesMarkers(pipLineSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
                         tacticalHoverState.time = null;
                     }
                 }
@@ -2898,7 +2898,7 @@ function renderTacticalChart(candles) {
         if (pipChartContainer) {
             pipChartContainer.addEventListener('mouseleave', () => {
                 if (tacticalHoverState.time !== null) {
-                    pipLineSeries.setMarkers(currentPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             });
