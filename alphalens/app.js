@@ -1,4 +1,4 @@
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 import { generatePIPSignal, findPIPs, analyzeTrend } from './strategyEngine.js';
 
 import { initializeApp } from "firebase/app";
@@ -1834,6 +1834,8 @@ function renderTradingViewChart(data) {
         timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
     });
 
+    currentPipMarkers = []; // Clear previous markers to prevent "ghost" tooltips
+
     candlestickSeries = currentStockChart.addSeries(CandlestickSeries, {
         upColor: '#10B981', downColor: '#EF4444',
         borderVisible: false, wickUpColor: '#10B981', wickDownColor: '#EF4444',
@@ -1841,7 +1843,7 @@ function renderTradingViewChart(data) {
     candlestickSeries.setData(data);
     
     // Add Markers Plugin
-    createSeriesMarkers(candlestickSeries, []);
+    candlestickSeries.setMarkers([]);
     
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
@@ -1897,12 +1899,12 @@ function renderTradingViewChart(data) {
                 };
             });
             currentPipMarkers = initialMarkers;
-            createSeriesMarkers(candlestickSeries, initialMarkers);
+            candlestickSeries.setMarkers(initialMarkers);
         } catch (e) {
             console.error("Initial PIP markers failed:", e);
         }
     } else {
-        createSeriesMarkers(candlestickSeries, []);
+        candlestickSeries.setMarkers([]);
     }
 
     // Interactive Marker Hover Logic
@@ -1930,17 +1932,21 @@ function renderTradingViewChart(data) {
                         if (m.time === param.time) {
                             return { ...m, text: text };
                         } else {
-                            return { ...m };
+                            const { text: _, ...rest } = m; 
+                            return { ...rest };
                         }
                     });
-                    createSeriesMarkers(candlestickSeries, updated);
+                    candlestickSeries.setMarkers(updated);
                     lastHoveredPipTime = param.time;
                 }
             }
         } else {
             if (lastHoveredPipTime !== null) {
-                const cleaned = currentPipMarkers.map(m => ({ ...m }));
-                createSeriesMarkers(candlestickSeries, cleaned);
+                const cleaned = currentPipMarkers.map(m => {
+                    const { text: _, ...rest } = m;
+                    return { ...rest };
+                });
+                candlestickSeries.setMarkers(cleaned);
                 lastHoveredPipTime = null;
             }
         }
@@ -2009,7 +2015,7 @@ function refreshPipAnalysis(logicalRange, allData) {
                 };
             });
             currentPipMarkers = markers;
-            createSeriesMarkers(candlestickSeries, markers);
+            candlestickSeries.setMarkers(markers);
         }
         
         // 2. Update Tactical Panel (if enabled)
@@ -2631,7 +2637,7 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
         });
     }
 
-    createSeriesMarkers(patternLabelSeries, markers);
+    patternLabelSeries.setMarkers(markers);
 }
 
 // --- Charting Modules ---
