@@ -63,6 +63,8 @@ let pipGhostSeries = null; // Transparent series to force time-scale alignment
 let pipTargetLines = []; // Holds createPriceLine references for 1x/2x amplitude targets
 let tacticalStdMean = 0;  // log10(price) mean used for Z-Score ↔ price conversion
 let tacticalStdDev = 1;   // log10(price) std used for Z-Score ↔ price conversion
+window.allTacticalPips = []; // Global reference for tactical markers
+window.mainPipMarkers = [];   // Global reference for main markers
 
 // API Keys (from .env via Vite)
 const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
@@ -2037,7 +2039,7 @@ function refreshPipAnalysis(logicalRange, allData) {
         pips.forEach(p => {
             p.stdY = (Math.log10(p.close) - tacticalStdMean) / tacticalStdDev;
         });
-        allTacticalPips = pips; // Update global reference
+        window.allTacticalPips = pips; // Update global reference
         
         // 1. Update Main Overlay (if enabled)
         if (isPipOverlayEnabled && pipSeries) {
@@ -2059,7 +2061,7 @@ function refreshPipAnalysis(logicalRange, allData) {
                     // No text property here ensures markers are hidden by default
                 };
             });
-            mainPipMarkers = markers;
+            window.mainPipMarkers = markers;
             mainHoverState.time = null;
             // Double-tap clear to handle potential plugin internal state
             createSeriesMarkers(candlestickSeries, []); 
@@ -3044,7 +3046,7 @@ function renderTacticalChart(candles) {
                 }
             } else {
                 // Use the updated global reference
-                const pip = (typeof allTacticalPips !== 'undefined' ? allTacticalPips : allPips).find(p => p.time === param.time);
+                const pip = (typeof window.allTacticalPips !== 'undefined' ? window.allTacticalPips : allPips).find(p => p.time === param.time);
                 if (pip && tacticalHoverState.time !== param.time) {
                     const priceVal = Math.pow(10, pip.stdY * tacticalStdDev + tacticalStdMean);
                     const text = `Val: $${priceVal.toFixed(2)}`;
@@ -3078,7 +3080,7 @@ function renderTacticalChart(candles) {
             });
         }
 
-        allTacticalPips = allPips; // Set initial reference
+        window.allTacticalPips = allPips; // Set initial reference
     }
 
     const visibleCandles = candles.slice(-60);
