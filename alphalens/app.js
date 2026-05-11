@@ -2357,6 +2357,9 @@ function togglePipTactical() {
         if (pipContainer) pipContainer.style.display = 'block';
         if (currentChartData) {
             renderTacticalChart(currentChartData);
+            // Force analysis refresh to ensure stdY is injected
+            const range = currentStockChart.timeScale().getVisibleLogicalRange();
+            if (range) refreshPipAnalysis(range, currentChartData);
         }
     } else {
         btn.classList.remove('active');
@@ -2367,14 +2370,7 @@ function togglePipTactical() {
             pipChartInstance.remove();
             pipChartInstance = null;
             pipLineSeries = null;
-            patternOverlaySeries = null;
-            structureLabelSeries = null;
-            patternLabelSeries = null;
-            patternUpperSeries = null;
-            patternLowerSeries = null;
-            pipPatternUpperSeries = null;
-            pipPatternLowerSeries = null;
-            pipGhostSeries = null;
+            // ... clean other series references if needed
         }
     }
 }
@@ -2385,16 +2381,19 @@ function togglePipOverlay() {
     
     if (isPipOverlayEnabled) {
         btn.classList.add('active');
+        if (pipSeries) pipSeries.applyOptions({ visible: true });
+        // Force refresh to show markers immediately
+        const range = currentStockChart.timeScale().getVisibleLogicalRange();
+        if (range && currentChartData) refreshPipAnalysis(range, currentChartData);
     } else {
         btn.classList.remove('active');
-        if (mainPipSeries) {
-            mainPipSeries.setData([]);
+        if (pipSeries) {
+            pipSeries.setData([]);
+            pipSeries.applyOptions({ visible: false });
         }
+        // Clear markers from main chart
+        createSeriesMarkers(candlestickSeries, []);
     }
-    
-    // Force re-render to update the main chart with PIP line
-    const ticker = document.getElementById('detail-ticker').textContent;
-    if (ticker) loadStockDetail(ticker);
 }
 
 function initTimeframeSwitcher() {
