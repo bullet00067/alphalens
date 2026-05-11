@@ -1,4 +1,4 @@
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
 import { generatePIPSignal, findPIPs, analyzeTrend } from './strategyEngine.js';
 
 import { initializeApp } from "firebase/app";
@@ -1872,7 +1872,7 @@ function renderTradingViewChart(data) {
     candlestickSeries.setData(data);
     
     // Add Markers Plugin
-    candlestickSeries.setMarkers([]);
+    createSeriesMarkers(candlestickSeries, []);
     
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
@@ -1919,15 +1919,15 @@ function renderTradingViewChart(data) {
                     };
                 });
                 mainPipMarkers = initialMarkers;
-                candlestickSeries.setMarkers(initialMarkers);
+                createSeriesMarkers(candlestickSeries, initialMarkers);
             } else {
-                candlestickSeries.setMarkers([]);
+                createSeriesMarkers(candlestickSeries, []);
             }
         } catch (e) {
             console.error("Initial PIP markers failed:", e);
         }
     } else {
-        candlestickSeries.setMarkers([]);
+        createSeriesMarkers(candlestickSeries, []);
     }
 
     // Interactive Marker Hover Logic
@@ -1936,13 +1936,13 @@ function renderTradingViewChart(data) {
     function clearAllLabels(series, markers) {
         if (!markers || markers.length === 0) return;
         const cleaned = markers.map(m => ({ ...m, text: "" }));
-        series.setMarkers(cleaned);
+        createSeriesMarkers(series, cleaned);
     }
 
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time) {
             if (mainHoverState.time !== null) {
-                candlestickSeries.setMarkers(mainPipMarkers.map(m => ({ ...m, text: "" })));
+                createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
                 mainHoverState.time = null;
             }
             return;
@@ -1958,12 +1958,12 @@ function renderTradingViewChart(data) {
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
-                    candlestickSeries.setMarkers(updated);
+                    createSeriesMarkers(candlestickSeries, updated);
                     mainHoverState.time = param.time;
                 }
             }
         } else if (mainHoverState.time !== null) {
-            candlestickSeries.setMarkers(mainPipMarkers.map(m => ({ ...m, text: "" })));
+            createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
             mainHoverState.time = null;
         }
     });
@@ -1999,6 +1999,17 @@ function renderTradingViewChart(data) {
 function areRangesEqual(r1, r2) {
     if (!r1 || !r2) return false;
     return Math.abs(r1.from - r2.from) < 0.05 && Math.abs(r1.to - r2.to) < 0.05;
+}
+
+/**
+ * Checks if the Main Stock Chart and Tactical Pip Chart are synchronized in their visible logical range.
+ */
+function checkTimeScaleSync() {
+    if (!currentStockChart || !pipChartInstance) return true; // Default to true if not initialized
+    const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
+    const pipRange = pipChartInstance.timeScale().getVisibleLogicalRange();
+    if (!mainRange || !pipRange) return true;
+    return areRangesEqual(mainRange, pipRange);
 }
 
 /**
@@ -2054,7 +2065,7 @@ function refreshPipAnalysis(logicalRange, allData) {
             });
             mainPipMarkers = markers;
             mainHoverState.time = null; // Reset so next hover re-applies label correctly
-            candlestickSeries.setMarkers(markers);
+            createSeriesMarkers(candlestickSeries, markers);
         }
         
         // 2. Update Tactical Panel (if enabled)
@@ -2790,7 +2801,7 @@ function renderStructureLabels(pips, chartInstance) {
     }
     
     if (structureLabelSeries) {
-        structureLabelSeries.setMarkers(markers);
+        createSeriesMarkers(structureLabelSeries, markers);
     }
 }
 
@@ -2845,7 +2856,7 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
         });
     }
 
-    patternLabelSeries.setMarkers(markers);
+    createSeriesMarkers(patternLabelSeries, markers);
 }
 
 // --- Charting Modules ---
@@ -3028,7 +3039,7 @@ function renderTacticalChart(candles) {
             if (!param.time) {
                 if (tacticalHoverState.time !== null) {
                     clearAllLabels(pipLineSeries, tacticalPipMarkers);
-                    pipLineSeries.setMarkers(tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             } else {
@@ -3039,10 +3050,10 @@ function renderTacticalChart(candles) {
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
-                    pipLineSeries.setMarkers(updated);
+                    createSeriesMarkers(pipLineSeries, updated);
                     tacticalHoverState.time = param.time;
                 } else if (!pip && tacticalHoverState.time !== null) {
-                    pipLineSeries.setMarkers(tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             }
@@ -3059,7 +3070,7 @@ function renderTacticalChart(candles) {
         if (pipChartContainer) {
             pipChartContainer.addEventListener('mouseleave', () => {
                 if (tacticalHoverState.time !== null) {
-                    pipLineSeries.setMarkers(tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             });
