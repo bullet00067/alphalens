@@ -2033,6 +2033,12 @@ function refreshPipAnalysis(logicalRange, allData) {
         const visibleData = allData.slice(startIdx, endIdx + 1);
         const pips = findPIPs(visibleData);
         
+        // RE-CALCULATE stdY to prevent NaN on hover
+        pips.forEach(p => {
+            p.stdY = (Math.log10(p.close) - tacticalStdMean) / tacticalStdDev;
+        });
+        allTacticalPips = pips; // Update global reference
+        
         // 1. Update Main Overlay (if enabled)
         if (isPipOverlayEnabled && pipSeries) {
             pipSeries.setData(pips);
@@ -2054,7 +2060,9 @@ function refreshPipAnalysis(logicalRange, allData) {
                 };
             });
             mainPipMarkers = markers;
-            mainHoverState.time = null; // Reset so next hover re-applies label correctly
+            mainHoverState.time = null;
+            // Double-tap clear to handle potential plugin internal state
+            createSeriesMarkers(candlestickSeries, []); 
             createSeriesMarkers(candlestickSeries, markers);
         }
         
@@ -3009,7 +3017,7 @@ function renderTacticalChart(candles) {
             if (!range || !currentStockChart) return;
             const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
             if (JSON.stringify(range) !== JSON.stringify(mainRange)) {
-                currentStockChart.timeScale().setVisibleLogicalRange(range);
+                pipChartInstance.timeScale().setVisibleLogicalRange(range);
             }
         });
 
@@ -3028,12 +3036,16 @@ function renderTacticalChart(candles) {
             // Marker hover for tactical chart
             if (!param.time) {
                 if (tacticalHoverState.time !== null) {
-                    clearAllLabels(pipLineSeries, tacticalPipMarkers);
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, []); 
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
+                        const { text, ...rest } = m;
+                        return rest;
+                    }));
                     tacticalHoverState.time = null;
                 }
             } else {
-                const pip = allPips.find(p => p.time === param.time);
+                // Use the updated global reference
+                const pip = (typeof allTacticalPips !== 'undefined' ? allTacticalPips : allPips).find(p => p.time === param.time);
                 if (pip && tacticalHoverState.time !== param.time) {
                     const priceVal = Math.pow(10, pip.stdY * tacticalStdDev + tacticalStdMean);
                     const text = `Val: $${priceVal.toFixed(2)}`;
@@ -3067,6 +3079,7 @@ function renderTacticalChart(candles) {
             });
         }
 
+        allTacticalPips = allPips; // Set initial reference
     }
 
     const visibleCandles = candles.slice(-60);
