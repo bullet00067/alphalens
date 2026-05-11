@@ -57,6 +57,8 @@ let structureLabelSeries = null; // For HH/HL markers
 let patternLabelSeries = null; // For Resistance/Support markers
 let patternUpperSeries = null;
 let patternLowerSeries = null;
+let pipPatternUpperSeries = null;
+let pipPatternLowerSeries = null;
 let pipGhostSeries = null; // Transparent series to force time-scale alignment
 
 // API Keys (from .env via Vite)
@@ -351,7 +353,7 @@ function isTaiwanStock(ticker) {
     if (!ticker) return false;
     const cleanTicker = ticker.trim();
     if (/[ \u4e00-\u9fa5]/.test(cleanTicker)) return true;
-    return /^\d{4,6}$/.test(cleanTicker) || cleanTicker.endsWith('.TW') || cleanTicker.endsWith('.TWO');
+    return /^\d{4,6}$/.test(ticker) || cleanTicker.endsWith('.TW') || cleanTicker.endsWith('.TWO');
 }
 
 function resolveTicker(input) {
@@ -823,6 +825,10 @@ async function updateObservationRow(ticker) {
         updateTacticalCache(ticker, trend, itemSignal);
     }
 }
+
+// In-memory cache for Tactical Insights
+let tacticalCache = {};
+let lastCacheUpdate = 0;
 
 function updateTacticalCache(ticker, trend, signal) {
     tacticalCache[ticker] = {
@@ -1820,7 +1826,8 @@ async function loadChartData(ticker, tf) {
 let bollingerSeries = { upper: null, mid: null, lower: null };
 let rsiChart = null;
 let rsiSeries = null;
-let currentPipMarkers = [];
+let mainPipMarkers = [];
+let tacticalPipMarkers = [];
 
 // --- Charting ---
 function renderTradingViewChart(data) {
@@ -1852,7 +1859,7 @@ function renderTradingViewChart(data) {
         timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
     });
 
-    currentPipMarkers = []; // Clear previous markers to prevent "ghost" tooltips
+    mainPipMarkers = []; // Clear previous markers to prevent "ghost" tooltips
 
     candlestickSeries = currentStockChart.addSeries(CandlestickSeries, {
         upColor: '#10B981', downColor: '#EF4444',
@@ -1907,7 +1914,7 @@ function renderTradingViewChart(data) {
                         text: ""
                     };
                 });
-                currentPipMarkers = initialMarkers;
+                mainPipMarkers = initialMarkers;
                 createSeriesMarkers(candlestickSeries, initialMarkers);
             } else {
                 createSeriesMarkers(candlestickSeries, []);
@@ -1925,25 +1932,25 @@ function renderTradingViewChart(data) {
     function clearAllLabels(series, markers) {
         if (!markers || markers.length === 0) return;
         const cleaned = markers.map(m => ({ ...m, text: "" }));
-        series.setMarkers(cleaned);
+        createSeriesMarkers(series, cleaned);
     }
 
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time) {
             if (mainHoverState.time !== null) {
-                createSeriesMarkers(candlestickSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
+                createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
                 mainHoverState.time = null;
             }
             return;
         }
 
-        const hoveredMarker = currentPipMarkers.find(m => m.time === param.time);
+        const hoveredMarker = mainPipMarkers.find(m => m.time === param.time);
         if (hoveredMarker) {
             if (mainHoverState.time !== param.time) {
                 const candle = data.find(d => d.time === param.time);
                 if (candle) {
                     const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
-                    const updated = currentPipMarkers.map(m => ({
+                    const updated = mainPipMarkers.map(m => ({
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
@@ -1952,7 +1959,7 @@ function renderTradingViewChart(data) {
                 }
             }
         } else if (mainHoverState.time !== null) {
-            createSeriesMarkers(candlestickSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
+            createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
             mainHoverState.time = null;
         }
     });
@@ -1961,7 +1968,7 @@ function renderTradingViewChart(data) {
     if (chartContainer) {
         chartContainer.addEventListener('mouseleave', () => {
             if (mainHoverState.time !== null) {
-                clearAllLabels(candlestickSeries, currentPipMarkers);
+                clearAllLabels(candlestickSeries, mainPipMarkers);
                 mainHoverState.time = null;
             }
         });
@@ -2026,32 +2033,53 @@ function refreshPipAnalysis(logicalRange, allData) {
                     time: p.time,
                     position: isHigh ? 'aboveBar' : 'belowBar',
                     color: isHigh ? '#ef4444' : '#10b981',
-                    shape: isHigh ? 'arrowDown' : 'arrowUp'
+                    shape: isHigh ? 'arrowDown' : 'arrowUp',
+                    text: ""
                 };
             });
-            currentPipMarkers = markers;
+            mainPipMarkers = markers;
             createSeriesMarkers(candlestickSeries, markers);
         }
         
         // 2. Update Tactical Panel (if enabled)
         if (isPipTacticalEnabled && pipChartInstance) {
-            if (pipLineSeries) pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.value })));
+            if (pipLineSeries) pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.stdY })));
             
             const signal = generatePIPSignal(visibleData, pips);
             const patternLabel = document.getElementById('pip-pattern-label');
             
             if (signal.patterns && signal.patterns.length > 0) {
                 const p = signal.patterns[0];
-                patternLabel.textContent = `PATTERN: ${p.name}`;
-                patternLabel.style.display = 'block';
-                patternLabel.style.background = `${p.color}33`;
-                patternLabel.style.color = p.color;
-                patternLabel.style.borderColor = `${p.color}4d`;
+                const prob = signal.probability || { bullish: 50, bearish: 50 };
+                patternLabel.innerHTML = `
+                    <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>PATTERN: <strong>${p.name}</strong></span>
+                            <span style="font-size: 0.9em; font-weight: bold;">
+                                <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
+                                <span style="opacity: 0.5; margin: 0 4px;">|</span>
+                                <i class="fa-solid fa-arrow-trend-down" style="color: #ef4444"></i> ${prob.bearish}%
+                            </span>
+                        </div>
+                        <div style="height: 4px; width: 100%; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; display: flex;">
+                            <div style="width: ${prob.bullish}%; background: #22c55e; height: 100%;"></div>
+                            <div style="width: ${prob.bearish}%; background: #ef4444; height: 100%;"></div>
+                        </div>
+                    </div>
+                `;
+                patternLabel.style.display = 'flex';
+                patternLabel.style.background = 'rgba(15, 23, 42, 0.8)';
+                patternLabel.style.backdropFilter = 'blur(4px)';
+                patternLabel.style.color = '#f8fafc';
+                patternLabel.style.borderLeft = `4px solid ${p.color}`;
+                patternLabel.style.padding = '10px 14px';
+                patternLabel.style.borderRadius = '4px';
+                
                 renderPatternGeometry(p, pips, pipChartInstance);
             } else {
                 patternLabel.style.display = 'none';
-                if (patternUpperSeries) patternUpperSeries.setData([]);
-                if (patternLowerSeries) patternLowerSeries.setData([]);
+                if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
+                if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
             }
             
             renderStructureLabels(pips, pipChartInstance);
@@ -2302,6 +2330,8 @@ function togglePipTactical() {
             patternLabelSeries = null;
             patternUpperSeries = null;
             patternLowerSeries = null;
+            pipPatternUpperSeries = null;
+            pipPatternLowerSeries = null;
             pipGhostSeries = null;
         }
     }
@@ -2512,9 +2542,13 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
     
     const isTactical = (chartInstance === pipChartInstance);
     
+    // Choose correct series based on chart type
+    let upperSeries = isTactical ? pipPatternUpperSeries : patternUpperSeries;
+    let lowerSeries = isTactical ? pipPatternLowerSeries : patternLowerSeries;
+
     // Ensure we have series
-    if (!patternUpperSeries) {
-        patternUpperSeries = chartInstance.addSeries(LineSeries, { 
+    if (!upperSeries) {
+        upperSeries = chartInstance.addSeries(LineSeries, { 
             color: pattern.color, 
             lineWidth: 2, 
             lineStyle: 2, // Dashed for projection
@@ -2522,12 +2556,14 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
             lastValueVisible: false,
             crosshairMarkerVisible: false 
         });
+        if (isTactical) pipPatternUpperSeries = upperSeries;
+        else patternUpperSeries = upperSeries;
     } else {
-        patternUpperSeries.applyOptions({ color: pattern.color });
+        upperSeries.applyOptions({ color: pattern.color });
     }
     
-    if (!patternLowerSeries) {
-        patternLowerSeries = chartInstance.addSeries(LineSeries, { 
+    if (!lowerSeries) {
+        lowerSeries = chartInstance.addSeries(LineSeries, { 
             color: pattern.color, 
             lineWidth: 2, 
             lineStyle: 2, // Dashed for projection
@@ -2535,8 +2571,10 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
             lastValueVisible: false,
             crosshairMarkerVisible: false
         });
+        if (isTactical) pipPatternLowerSeries = lowerSeries;
+        else patternLowerSeries = lowerSeries;
     } else {
-        patternLowerSeries.applyOptions({ color: pattern.color });
+        lowerSeries.applyOptions({ color: pattern.color });
     }
 
     const lastBar = currentChartData[currentChartData.length - 1];
@@ -2577,16 +2615,16 @@ function renderPatternGeometry(pattern, pips, chartInstance) {
         upperData.push({ time: lastBar.time, value: upperProj });
         lowerData.push({ time: lastBar.time, value: lowerProj });
 
-        patternUpperSeries.setData(upperData);
-        patternLowerSeries.setData(lowerData);
+        upperSeries.setData(upperData);
+        lowerSeries.setData(lowerData);
     } else if (pattern.type.includes('DOUBLE')) {
         const sortedPoints = [...pattern.points].sort((a, b) => a.index - b.index);
         if (sortedPoints.length >= 2) {
-            patternUpperSeries.setData(sortedPoints.map(p => ({ 
+            upperSeries.setData(sortedPoints.map(p => ({ 
                 time: p.time, 
                 value: isTactical ? p.stdY : p.value 
             })));
-            patternLowerSeries.setData([]);
+            lowerSeries.setData([]);
         }
     }
 }
@@ -2726,6 +2764,8 @@ function renderTacticalChart(candles) {
             patternLabelSeries = null;
             patternUpperSeries = null;
             patternLowerSeries = null;
+            pipPatternUpperSeries = null;
+            pipPatternLowerSeries = null;
             pipGhostSeries = null;
         }
         return;
@@ -2744,6 +2784,8 @@ function renderTacticalChart(candles) {
         patternLabelSeries = null;
         patternUpperSeries = null;
         patternLowerSeries = null;
+        pipPatternUpperSeries = null;
+        pipPatternLowerSeries = null;
         pipGhostSeries = null;
     }
 
@@ -2762,15 +2804,35 @@ function renderTacticalChart(candles) {
             minimumWidth: 100, // Same fixed width as main chart
             lastValueVisible: false
         },
+        localization: {
+            priceFormatter: price => price.toFixed(2),
+        },
         crosshair: { mode: CrosshairMode.Normal }
     });
+
+    // Add a label indicating standardized units
+    const statsLabel = document.createElement('div');
+    statsLabel.style.position = 'absolute';
+    statsLabel.style.top = '10px';
+    statsLabel.style.left = '10px';
+    statsLabel.style.zIndex = '5';
+    statsLabel.style.fontSize = '10px';
+    statsLabel.style.color = 'rgba(255,255,255,0.4)';
+    statsLabel.style.pointerEvents = 'none';
+    statsLabel.textContent = 'STANDARDIZED (Z-SCORE)';
+    pipContainer.appendChild(statsLabel);
 
     pipLineSeries = pipChartInstance.addSeries(LineSeries, {
         color: '#eab308',
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: false,
-        crosshairMarkerVisible: true
+        crosshairMarkerVisible: true,
+        priceFormat: {
+            type: 'volume', // Using 'volume' type removes '$' prefix in most contexts or we can use custom
+            precision: 2,
+            minMove: 0.01,
+        }
     });
 
     patternOverlaySeries = pipChartInstance.addSeries(LineSeries, {
@@ -2815,6 +2877,17 @@ function renderTacticalChart(candles) {
     // 2. Standardized PIP Data - Process FULL range for sync
     const allPips = findPIPs(candles);
     const initialPips = allPips.slice(-60); // Patterns usually based on recent window
+    
+    // Initialize tactical markers
+    tacticalPipMarkers = allPips.map(p => ({
+        time: p.time,
+        position: 'inBar', // Tactical uses values on the line, not high/low
+        color: '#eab308',
+        shape: 'circle',
+        size: 0.1,
+        text: ""
+    }));
+
     pipLineSeries.setData(allPips.map(p => ({ time: p.time, value: p.stdY })));
 
     // 3. Sync Logic
@@ -2857,32 +2930,24 @@ function renderTacticalChart(candles) {
             if (!currentStockChart || !candlestickSeries) return;
             
             // Marker hover for tactical chart
-            if (typeof handleMarkerHover === 'function') {
-                handleMarkerHover(param, pipChartInstance, pipLineSeries, currentPipMarkers, candles, tacticalHoverState);
+            if (!param.time) {
+                if (tacticalHoverState.time !== null) {
+                    clearAllLabels(pipLineSeries, tacticalPipMarkers);
+                    tacticalHoverState.time = null;
+                }
             } else {
-                // Inline handle for tactical chart if helper missing
-                if (!param.time) {
-                    if (tacticalHoverState.time !== null) {
-                        clearAllLabels(pipLineSeries, currentPipMarkers);
-                        tacticalHoverState.time = null;
-                    }
-                } else {
-                    const hoveredMarker = currentPipMarkers.find(m => m.time === param.time);
-                    if (hoveredMarker && tacticalHoverState.time !== param.time) {
-                        const candle = candles.find(d => d.time === param.time);
-                        if (candle) {
-                            const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
-                            const updated = currentPipMarkers.map(m => ({
-                                ...m,
-                                text: m.time === param.time ? text : ""
-                            }));
-                            createSeriesMarkers(pipLineSeries, updated);
-                            tacticalHoverState.time = param.time;
-                        }
-                    } else if (!hoveredMarker && tacticalHoverState.time !== null) {
-                        createSeriesMarkers(pipLineSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
-                        tacticalHoverState.time = null;
-                    }
+                const pip = allPips.find(p => p.time === param.time);
+                if (pip && tacticalHoverState.time !== param.time) {
+                    const text = `Val: ${pip.stdY.toFixed(2)}`;
+                    const updated = tacticalPipMarkers.map(m => ({
+                        ...m,
+                        text: m.time === param.time ? text : ""
+                    }));
+                    createSeriesMarkers(pipLineSeries, updated);
+                    tacticalHoverState.time = param.time;
+                } else if (!pip && tacticalHoverState.time !== null) {
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    tacticalHoverState.time = null;
                 }
             }
 
@@ -2898,7 +2963,7 @@ function renderTacticalChart(candles) {
         if (pipChartContainer) {
             pipChartContainer.addEventListener('mouseleave', () => {
                 if (tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, currentPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             });
@@ -2913,21 +2978,28 @@ function renderTacticalChart(candles) {
         const p = tacticalSignal.patterns[0];
         const prob = p.probability || { bullish: 50, bearish: 50 };
         patternLabel.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <span>PATTERN: <strong>${p.name}</strong></span>
-                <span style="font-size: 0.85em; opacity: 0.9;">
-                    <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
-                    | 
-                    <i class="fa-solid fa-arrow-trend-down" style="color: #ef4444"></i> ${prob.bearish}%
-                </span>
+            <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>PATTERN: <strong>${p.name}</strong></span>
+                    <span style="font-size: 0.9em; font-weight: bold;">
+                        <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
+                        <span style="opacity: 0.5; margin: 0 4px;">|</span>
+                        <i class="fa-solid fa-arrow-trend-down" style="color: #ef4444"></i> ${prob.bearish}%
+                    </span>
+                </div>
+                <div style="height: 4px; width: 100%; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; display: flex;">
+                    <div style="width: ${prob.bullish}%; background: #22c55e; height: 100%;"></div>
+                    <div style="width: ${prob.bearish}%; background: #ef4444; height: 100%;"></div>
+                </div>
             </div>
         `;
         patternLabel.style.display = 'flex';
-        patternLabel.style.background = `${p.color}33`;
-        patternLabel.style.color = p.color;
-        patternLabel.style.borderColor = `${p.color}4d`;
-        patternLabel.style.padding = '8px 12px';
-        patternLabel.style.borderRadius = '6px';
+        patternLabel.style.background = 'rgba(15, 23, 42, 0.8)';
+        patternLabel.style.backdropFilter = 'blur(4px)';
+        patternLabel.style.color = '#f8fafc';
+        patternLabel.style.borderLeft = `4px solid ${p.color}`;
+        patternLabel.style.padding = '10px 14px';
+        patternLabel.style.borderRadius = '4px';
         
         // Update Sidebar Panel
         const sidePattern = document.getElementById('tactical-pattern-name');
@@ -2942,6 +3014,8 @@ function renderTacticalChart(candles) {
         patternLabel.style.display = 'none';
         const sidePattern = document.getElementById('tactical-pattern-name');
         if (sidePattern) sidePattern.textContent = 'NONE';
+        if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
+        if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
     }
 
     renderStructureLabels(pips, pipChartInstance);
