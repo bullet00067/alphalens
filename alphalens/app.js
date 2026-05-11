@@ -1998,7 +1998,8 @@ function renderTradingViewChart(data) {
 // --- Helper for Range Equality ---
 function areRangesEqual(r1, r2) {
     if (!r1 || !r2) return false;
-    return Math.abs(r1.from - r2.from) < 0.05 && Math.abs(r1.to - r2.to) < 0.05;
+    // Increased tolerance slightly to 0.1 to avoid jitter
+    return Math.abs(r1.from - r2.from) < 0.1 && Math.abs(r1.to - r2.to) < 0.1;
 }
 
 /**
@@ -2048,8 +2049,8 @@ function refreshPipAnalysis(logicalRange, allData) {
                     time: p.time,
                     position: isHigh ? 'aboveBar' : 'belowBar',
                     color: isHigh ? '#ef4444' : '#10b981',
-                    shape: isHigh ? 'arrowDown' : 'arrowUp',
-                    text: ""
+                    shape: isHigh ? 'arrowDown' : 'arrowUp'
+                    // No text property here ensures markers are hidden by default
                 };
             });
             mainPipMarkers = markers;
@@ -3034,7 +3035,8 @@ function renderTacticalChart(candles) {
             } else {
                 const pip = allPips.find(p => p.time === param.time);
                 if (pip && tacticalHoverState.time !== param.time) {
-                    const text = `Val: ${pip.stdY.toFixed(2)}`;
+                    const priceVal = Math.pow(10, pip.stdY * tacticalStdDev + tacticalStdMean);
+                    const text = `Val: $${priceVal.toFixed(2)}`;
                     const updated = tacticalPipMarkers.map(m => ({
                         ...m,
                         text: m.time === param.time ? text : ""
