@@ -1,4 +1,4 @@
-import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 import { generatePIPSignal, findPIPs, analyzeTrend } from './strategyEngine.js';
 
 import { initializeApp } from "firebase/app";
@@ -1872,7 +1872,7 @@ function renderTradingViewChart(data) {
     candlestickSeries.setData(data);
     
     // Add Markers Plugin
-    createSeriesMarkers(candlestickSeries, []);
+    candlestickSeries.setMarkers([]);
     
     // Add PIP Series Overlay
     pipSeries = currentStockChart.addSeries(LineSeries, {
@@ -1919,15 +1919,15 @@ function renderTradingViewChart(data) {
                     };
                 });
                 mainPipMarkers = initialMarkers;
-                createSeriesMarkers(candlestickSeries, initialMarkers);
+                candlestickSeries.setMarkers(initialMarkers);
             } else {
-                createSeriesMarkers(candlestickSeries, []);
+                candlestickSeries.setMarkers([]);
             }
         } catch (e) {
             console.error("Initial PIP markers failed:", e);
         }
     } else {
-        createSeriesMarkers(candlestickSeries, []);
+        candlestickSeries.setMarkers([]);
     }
 
     // Interactive Marker Hover Logic
@@ -1936,13 +1936,13 @@ function renderTradingViewChart(data) {
     function clearAllLabels(series, markers) {
         if (!markers || markers.length === 0) return;
         const cleaned = markers.map(m => ({ ...m, text: "" }));
-        createSeriesMarkers(series, cleaned);
+        series.setMarkers(cleaned);
     }
 
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time) {
             if (mainHoverState.time !== null) {
-                createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
+                candlestickSeries.setMarkers(mainPipMarkers.map(m => ({ ...m, text: "" })));
                 mainHoverState.time = null;
             }
             return;
@@ -1958,12 +1958,12 @@ function renderTradingViewChart(data) {
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
-                    createSeriesMarkers(candlestickSeries, updated);
+                    candlestickSeries.setMarkers(updated);
                     mainHoverState.time = param.time;
                 }
             }
         } else if (mainHoverState.time !== null) {
-            createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
+            candlestickSeries.setMarkers(mainPipMarkers.map(m => ({ ...m, text: "" })));
             mainHoverState.time = null;
         }
     });
@@ -1999,6 +1999,17 @@ function renderTradingViewChart(data) {
 function areRangesEqual(r1, r2) {
     if (!r1 || !r2) return false;
     return Math.abs(r1.from - r2.from) < 0.05 && Math.abs(r1.to - r2.to) < 0.05;
+}
+
+/**
+ * Checks if the Main Stock Chart and Tactical Pip Chart are synchronized in their visible logical range.
+ */
+function checkTimeScaleSync() {
+    if (!currentStockChart || !pipChartInstance) return true; // Default to true if not initialized
+    const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
+    const pipRange = pipChartInstance.timeScale().getVisibleLogicalRange();
+    if (!mainRange || !pipRange) return true;
+    return areRangesEqual(mainRange, pipRange);
 }
 
 // --- Calculations ---
@@ -2043,7 +2054,7 @@ function refreshPipAnalysis(logicalRange, allData) {
             });
             mainPipMarkers = markers;
             mainHoverState.time = null; // Reset so next hover re-applies label correctly
-            createSeriesMarkers(candlestickSeries, markers);
+            candlestickSeries.setMarkers(markers);
         }
         
         // 2. Update Tactical Panel (if enabled)
@@ -2779,7 +2790,7 @@ function renderStructureLabels(pips, chartInstance) {
     }
     
     if (structureLabelSeries) {
-        createSeriesMarkers(structureLabelSeries, markers);
+        structureLabelSeries.setMarkers(markers);
     }
 }
 
@@ -2834,7 +2845,7 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
         });
     }
 
-    createSeriesMarkers(patternLabelSeries, markers);
+    patternLabelSeries.setMarkers(markers);
 }
 
 // --- Charting Modules ---
@@ -3017,6 +3028,7 @@ function renderTacticalChart(candles) {
             if (!param.time) {
                 if (tacticalHoverState.time !== null) {
                     clearAllLabels(pipLineSeries, tacticalPipMarkers);
+                    pipLineSeries.setMarkers(tacticalPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             } else {
@@ -3027,10 +3039,10 @@ function renderTacticalChart(candles) {
                         ...m,
                         text: m.time === param.time ? text : ""
                     }));
-                    createSeriesMarkers(pipLineSeries, updated);
+                    pipLineSeries.setMarkers(updated);
                     tacticalHoverState.time = param.time;
                 } else if (!pip && tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    pipLineSeries.setMarkers(tacticalPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             }
@@ -3047,7 +3059,7 @@ function renderTacticalChart(candles) {
         if (pipChartContainer) {
             pipChartContainer.addEventListener('mouseleave', () => {
                 if (tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    pipLineSeries.setMarkers(tacticalPipMarkers.map(m => ({ ...m, text: "" })));
                     tacticalHoverState.time = null;
                 }
             });
@@ -3133,9 +3145,10 @@ function renderTacticalChart(candles) {
     }
     
     if (validationStatus.ticker === currentTicker) {
-        const icon = validationStatus.status === 'SUCCESS' ? 'check-circle' : (validationStatus.status === 'WARNING' ? 'exclamation-triangle' : 'times-circle');
-        const color = validationStatus.status === 'SUCCESS' ? '#22c55e' : (validationStatus.status === 'WARNING' ? '#eab308' : '#ef4444');
-        const text = validationStatus.status === 'SUCCESS' ? 'Verified' : (validationStatus.status === 'WARNING' ? 'Data Lag' : 'Sync Error');
+        const isTimeSynced = checkTimeScaleSync();
+        const icon = !isTimeSynced ? 'sync-alt' : (validationStatus.status === 'SUCCESS' ? 'check-circle' : (validationStatus.status === 'WARNING' ? 'exclamation-triangle' : 'exclamation-circle'));
+        const color = !isTimeSynced ? '#ef4444' : (validationStatus.status === 'SUCCESS' ? '#22c55e' : (validationStatus.status === 'WARNING' ? '#eab308' : '#94a3b8'));
+        const text = !isTimeSynced ? 'Sync Error' : (validationStatus.status === 'SUCCESS' ? 'Verified' : (validationStatus.status === 'WARNING' ? 'Data Lag' : 'Verify Error'));
         
         const badgeHtml = `<i class="fa-solid fa-${icon}"></i> ${text}`;
         statusBadge.innerHTML = badgeHtml;
