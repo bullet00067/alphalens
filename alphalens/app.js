@@ -60,6 +60,7 @@ let patternLowerSeries = null;
 let pipPatternUpperSeries = null;
 let pipPatternLowerSeries = null;
 let pipGhostSeries = null; // Transparent series to force time-scale alignment
+let pipTargetLines = []; // Holds createPriceLine references for 1x/2x amplitude targets
 
 // API Keys (from .env via Vite)
 const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
@@ -2051,6 +2052,10 @@ function refreshPipAnalysis(logicalRange, allData) {
             if (signal.patterns && signal.patterns.length > 0) {
                 const p = signal.patterns[0];
                 const prob = signal.probability || { bullish: 50, bearish: 50 };
+
+                // Task 3.1 + 3.2: Calculate amplitude & render target lines
+                const targets = renderAmplitudeTargets(p, pips);
+
                 patternLabel.innerHTML = `
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -2065,6 +2070,13 @@ function refreshPipAnalysis(logicalRange, allData) {
                             <div style="width: ${prob.bullish}%; background: #22c55e; height: 100%;"></div>
                             <div style="width: ${prob.bearish}%; background: #ef4444; height: 100%;"></div>
                         </div>
+                        ${targets ? `
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 4px; font-size: 11px;">
+                            <span style="color: #22c55e;">▲ 1x: <strong>${targets.up1x.toFixed(2)}σ</strong></span>
+                            <span style="color: #16a34a;">▲ 2x: <strong>${targets.up2x.toFixed(2)}σ</strong></span>
+                            <span style="color: #ef4444;">▼ 1x: <strong>${targets.dn1x.toFixed(2)}σ</strong></span>
+                            <span style="color: #dc2626;">▼ 2x: <strong>${targets.dn2x.toFixed(2)}σ</strong></span>
+                        </div>` : ''}
                     </div>
                 `;
                 patternLabel.style.display = 'flex';
@@ -2080,6 +2092,7 @@ function refreshPipAnalysis(logicalRange, allData) {
                 patternLabel.style.display = 'none';
                 if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
                 if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
+                renderAmplitudeTargets(null, null); // Clear target lines
             }
             
             renderStructureLabels(pips, pipChartInstance);
@@ -2537,6 +2550,60 @@ function scrollToBottom() {
     const messagesContainer = document.getElementById('chat-messages');
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
+/**
+ * Renders 1x and 2x amplitude projection lines on the tactical chart.
+ * Works in standardized (Z-Score) space so values align with the pipLineSeries Y-axis.
+ */
+function renderAmplitudeTargets(pattern, pips) {
+    // Remove all existing target lines first
+    if (pipLineSeries) {
+        pipTargetLines.forEach(line => {
+            try { pipLineSeries.removePriceLine(line); } catch(e) {}
+        });
+    }
+    pipTargetLines = [];
+
+    if (!pattern || !pips || !pipLineSeries || pips.length < 2) return;
+
+    // Calculate stdY amplitude from pattern points using standardized values
+    const stdYValues = pattern.points.map(pt => pt.stdY).filter(v => v !== undefined && !isNaN(v));
+    if (stdYValues.length < 2) return;
+
+    const maxStdY = Math.max(...stdYValues);
+    const minStdY = Math.min(...stdYValues);
+    const amplitude = maxStdY - minStdY;
+    if (amplitude <= 0) return;
+
+    // Calculate targets in standardized space
+    const up1x  = maxStdY + amplitude;
+    const up2x  = maxStdY + amplitude * 2;
+    const dn1x  = minStdY - amplitude;
+    const dn2x  = minStdY - amplitude * 2;
+
+    const isNetBullish = (pattern.probability?.bullish ?? 50) >= 50;
+
+    const targetDefs = [
+        { value: up1x,  label: '▲ 1x Target', color: '#22c55e', style: 2 },  // dashed
+        { value: up2x,  label: '▲ 2x Target', color: '#16a34a', style: 1 },  // dotted
+        { value: dn1x,  label: '▼ 1x Target', color: '#ef4444', style: 2 },
+        { value: dn2x,  label: '▼ 2x Target', color: '#dc2626', style: 1 },
+    ];
+
+    targetDefs.forEach(def => {
+        const line = pipLineSeries.createPriceLine({
+            price: def.value,
+            color: def.color,
+            lineWidth: 1,
+            lineStyle: def.style,
+            axisLabelVisible: true,
+            title: def.label,
+        });
+        pipTargetLines.push(line);
+    });
+
+    return { up1x, up2x, dn1x, dn2x, amplitude };
+}
+
 function renderPatternGeometry(pattern, pips, chartInstance) {
     if (!pattern || !chartInstance || !currentChartData) return;
     
@@ -2977,6 +3044,10 @@ function renderTacticalChart(candles) {
     if (tacticalSignal && tacticalSignal.patterns && tacticalSignal.patterns.length > 0) {
         const p = tacticalSignal.patterns[0];
         const prob = p.probability || { bullish: 50, bearish: 50 };
+
+        // Render amplitude target lines on tactical chart
+        const targets = renderAmplitudeTargets(p, pips);
+
         patternLabel.innerHTML = `
             <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -2991,6 +3062,13 @@ function renderTacticalChart(candles) {
                     <div style="width: ${prob.bullish}%; background: #22c55e; height: 100%;"></div>
                     <div style="width: ${prob.bearish}%; background: #ef4444; height: 100%;"></div>
                 </div>
+                ${targets ? `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 4px; font-size: 11px;">
+                    <span style="color: #22c55e;">▲ 1x: <strong>${targets.up1x.toFixed(2)}σ</strong></span>
+                    <span style="color: #16a34a;">▲ 2x: <strong>${targets.up2x.toFixed(2)}σ</strong></span>
+                    <span style="color: #ef4444;">▼ 1x: <strong>${targets.dn1x.toFixed(2)}σ</strong></span>
+                    <span style="color: #dc2626;">▼ 2x: <strong>${targets.dn2x.toFixed(2)}σ</strong></span>
+                </div>` : ''}
             </div>
         `;
         patternLabel.style.display = 'flex';
@@ -3016,6 +3094,7 @@ function renderTacticalChart(candles) {
         if (sidePattern) sidePattern.textContent = 'NONE';
         if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
         if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
+        renderAmplitudeTargets(null, null); // Clear any stale target lines
     }
 
     renderStructureLabels(pips, pipChartInstance);
