@@ -2012,17 +2012,6 @@ function checkTimeScaleSync() {
     return areRangesEqual(mainRange, pipRange);
 }
 
-/**
- * Checks if the Main Stock Chart and Tactical Pip Chart are synchronized in their visible logical range.
- */
-function checkTimeScaleSync() {
-    if (!currentStockChart || !pipChartInstance) return true; // Default to true if not initialized
-    const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
-    const pipRange = pipChartInstance.timeScale().getVisibleLogicalRange();
-    if (!mainRange || !pipRange) return true;
-    return areRangesEqual(mainRange, pipRange);
-}
-
 // --- Calculations ---
 function calculateMA(candles, period) {
     if (candles.length < period) return 0;
