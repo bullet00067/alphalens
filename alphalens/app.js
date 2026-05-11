@@ -61,6 +61,8 @@ let pipPatternUpperSeries = null;
 let pipPatternLowerSeries = null;
 let pipGhostSeries = null; // Transparent series to force time-scale alignment
 let pipTargetLines = []; // Holds createPriceLine references for 1x/2x amplitude targets
+let tacticalStdMean = 0;  // log10(price) mean used for Z-Score ↔ price conversion
+let tacticalStdDev = 1;   // log10(price) std used for Z-Score ↔ price conversion
 
 // API Keys (from .env via Vite)
 const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
@@ -1829,6 +1831,7 @@ let rsiChart = null;
 let rsiSeries = null;
 let mainPipMarkers = [];
 let tacticalPipMarkers = [];
+const mainHoverState = { time: null }; // Module-level so refreshPipAnalysis can reset it
 
 // --- Charting ---
 function renderTradingViewChart(data) {
@@ -1928,7 +1931,7 @@ function renderTradingViewChart(data) {
     }
 
     // Interactive Marker Hover Logic
-    const mainHoverState = { time: null };
+    mainHoverState.time = null; // Reset on chart re-render
 
     function clearAllLabels(series, markers) {
         if (!markers || markers.length === 0) return;
@@ -2039,11 +2042,17 @@ function refreshPipAnalysis(logicalRange, allData) {
                 };
             });
             mainPipMarkers = markers;
+            mainHoverState.time = null; // Reset so next hover re-applies label correctly
             createSeriesMarkers(candlestickSeries, markers);
         }
         
         // 2. Update Tactical Panel (if enabled)
         if (isPipTacticalEnabled && pipChartInstance) {
+            // Task 3.3: Recompute standardization stats from visibleData to keep σ ↔ price conversion accurate
+            const logVals = visibleData.map(c => Math.log10(c.close));
+            tacticalStdMean = logVals.reduce((a, b) => a + b, 0) / logVals.length;
+            tacticalStdDev = Math.sqrt(logVals.reduce((a, b) => a + Math.pow(b - tacticalStdMean, 2), 0) / logVals.length) || 1;
+
             if (pipLineSeries) pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.stdY })));
             
             const signal = generatePIPSignal(visibleData, pips);
@@ -2072,10 +2081,10 @@ function refreshPipAnalysis(logicalRange, allData) {
                         </div>
                         ${targets ? `
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 4px; font-size: 11px;">
-                            <span style="color: #22c55e;">▲ 1x: <strong>${targets.up1x.toFixed(2)}σ</strong></span>
-                            <span style="color: #16a34a;">▲ 2x: <strong>${targets.up2x.toFixed(2)}σ</strong></span>
-                            <span style="color: #ef4444;">▼ 1x: <strong>${targets.dn1x.toFixed(2)}σ</strong></span>
-                            <span style="color: #dc2626;">▼ 2x: <strong>${targets.dn2x.toFixed(2)}σ</strong></span>
+                            <span style="color: #22c55e;">▲ 1x: <strong>$${targets.up1x.toFixed(2)}</strong></span>
+                            <span style="color: #16a34a;">▲ 2x: <strong>$${targets.up2x.toFixed(2)}</strong></span>
+                            <span style="color: #ef4444;">▼ 1x: <strong>$${targets.dn1x.toFixed(2)}</strong></span>
+                            <span style="color: #dc2626;">▼ 2x: <strong>$${targets.dn2x.toFixed(2)}</strong></span>
                         </div>` : ''}
                     </div>
                 `;
@@ -2582,11 +2591,14 @@ function renderAmplitudeTargets(pattern, pips) {
 
     const isNetBullish = (pattern.probability?.bullish ?? 50) >= 50;
 
+    // Task 5.1: Helper to convert σ back to price using current standardization params
+    const toPrice = sigma => Math.pow(10, sigma * tacticalStdDev + tacticalStdMean);
+
     const targetDefs = [
-        { value: up1x,  label: '▲ 1x Target', color: '#22c55e', style: 2 },  // dashed
-        { value: up2x,  label: '▲ 2x Target', color: '#16a34a', style: 1 },  // dotted
-        { value: dn1x,  label: '▼ 1x Target', color: '#ef4444', style: 2 },
-        { value: dn2x,  label: '▼ 2x Target', color: '#dc2626', style: 1 },
+        { value: up1x,  label: `▲ 1x: $${toPrice(up1x).toFixed(2)}`, color: '#22c55e', style: 2 },  // dashed
+        { value: up2x,  label: `▲ 2x: $${toPrice(up2x).toFixed(2)}`, color: '#16a34a', style: 1 },  // dotted
+        { value: dn1x,  label: `▼ 1x: $${toPrice(dn1x).toFixed(2)}`, color: '#ef4444', style: 2 },
+        { value: dn2x,  label: `▼ 2x: $${toPrice(dn2x).toFixed(2)}`, color: '#dc2626', style: 1 },
     ];
 
     targetDefs.forEach(def => {
@@ -2601,7 +2613,13 @@ function renderAmplitudeTargets(pattern, pips) {
         pipTargetLines.push(line);
     });
 
-    return { up1x, up2x, dn1x, dn2x, amplitude };
+    return { 
+        up1x: toPrice(up1x), 
+        up2x: toPrice(up2x), 
+        dn1x: toPrice(dn1x), 
+        dn2x: toPrice(dn2x), 
+        amplitude 
+    };
 }
 
 function renderPatternGeometry(pattern, pips, chartInstance) {
@@ -2928,22 +2946,21 @@ function renderTacticalChart(candles) {
         lastValueVisible: false,
         crosshairMarkerVisible: false
     });
-    // 1. Standardized Main Data (the "Ghost" series for background)
-    pipGhostSeries.setData(candles.map(c => {
-        // We need the standardization stats to map these correctly
-        // For simplicity, we calculate a local standardization for this window
-        const vals = candles.map(v => Math.log10(v.close));
-        const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-        const std = Math.sqrt(vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / vals.length) || 1;
-        return { 
-            time: c.time, 
-            value: (Math.log10(c.close) - mean) / std 
-        };
-    }));
+    // 1. Standardized Main Data (compute once, store params globally for price conversion)
+    const logVals = candles.map(c => Math.log10(c.close));
+    tacticalStdMean = logVals.reduce((a, b) => a + b, 0) / logVals.length;
+    tacticalStdDev = Math.sqrt(logVals.reduce((a, b) => a + Math.pow(b - tacticalStdMean, 2), 0) / logVals.length) || 1;
 
-    // 2. Standardized PIP Data - Process FULL range for sync
+    pipGhostSeries.setData(candles.map(c => ({
+        time: c.time,
+        value: (Math.log10(c.close) - tacticalStdMean) / tacticalStdDev
+    })));
+
+    // 2. Standardized PIP Data - inject stdY into each PIP point
     const allPips = findPIPs(candles);
-    const initialPips = allPips.slice(-60); // Patterns usually based on recent window
+    allPips.forEach(p => {
+        p.stdY = (Math.log10(p.close) - tacticalStdMean) / tacticalStdDev;
+    });
     
     // Initialize tactical markers
     tacticalPipMarkers = allPips.map(p => ({
@@ -3038,15 +3055,20 @@ function renderTacticalChart(candles) {
 
     }
 
-    const tacticalSignal = typeof generatePIPSignal === 'function' ? generatePIPSignal(candles) : { patterns: [], probability: { bullish: 50, bearish: 50 } };
-    const pips = findPIPs(candles);
+    const visibleCandles = candles.slice(-60);
+    const visiblePips = findPIPs(visibleCandles);
+    visiblePips.forEach(p => {
+        p.stdY = (Math.log10(p.close) - tacticalStdMean) / tacticalStdDev;
+    });
+
+    const tacticalSignal = typeof generatePIPSignal === 'function' ? generatePIPSignal(visibleCandles, visiblePips) : { patterns: [], probability: { bullish: 50, bearish: 50 } };
 
     if (tacticalSignal && tacticalSignal.patterns && tacticalSignal.patterns.length > 0) {
         const p = tacticalSignal.patterns[0];
-        const prob = p.probability || { bullish: 50, bearish: 50 };
+        const prob = tacticalSignal.probability || { bullish: 50, bearish: 50 };
 
         // Render amplitude target lines on tactical chart
-        const targets = renderAmplitudeTargets(p, pips);
+        const targets = renderAmplitudeTargets(p, visiblePips);
 
         patternLabel.innerHTML = `
             <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
@@ -3064,10 +3086,10 @@ function renderTacticalChart(candles) {
                 </div>
                 ${targets ? `
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 4px; font-size: 11px;">
-                    <span style="color: #22c55e;">▲ 1x: <strong>${targets.up1x.toFixed(2)}σ</strong></span>
-                    <span style="color: #16a34a;">▲ 2x: <strong>${targets.up2x.toFixed(2)}σ</strong></span>
-                    <span style="color: #ef4444;">▼ 1x: <strong>${targets.dn1x.toFixed(2)}σ</strong></span>
-                    <span style="color: #dc2626;">▼ 2x: <strong>${targets.dn2x.toFixed(2)}σ</strong></span>
+                    <span style="color: #22c55e;">▲ 1x: <strong>$${targets.up1x.toFixed(2)}</strong></span>
+                    <span style="color: #16a34a;">▲ 2x: <strong>$${targets.up2x.toFixed(2)}</strong></span>
+                    <span style="color: #ef4444;">▼ 1x: <strong>$${targets.dn1x.toFixed(2)}</strong></span>
+                    <span style="color: #dc2626;">▼ 2x: <strong>$${targets.dn2x.toFixed(2)}</strong></span>
                 </div>` : ''}
             </div>
         `;
@@ -3086,8 +3108,8 @@ function renderTacticalChart(candles) {
             sidePattern.style.color = p.color;
         }
 
-        renderPatternGeometry(p, pips, pipChartInstance);
-        renderPatternLabels(p, tacticalSignal, candles, pipChartInstance);
+        renderPatternGeometry(p, visiblePips, pipChartInstance);
+        renderPatternLabels(p, tacticalSignal, visibleCandles, pipChartInstance);
     } else {
         patternLabel.style.display = 'none';
         const sidePattern = document.getElementById('tactical-pattern-name');
@@ -3097,7 +3119,7 @@ function renderTacticalChart(candles) {
         renderAmplitudeTargets(null, null); // Clear any stale target lines
     }
 
-    renderStructureLabels(pips, pipChartInstance);
+    renderStructureLabels(visiblePips, pipChartInstance);
     
     // Render Validation Status
     let statusBadge = document.getElementById('tactical-validation-status');
