@@ -2896,12 +2896,39 @@ function renderTacticalChart(candles) {
     if (!pipContainer) {
         pipContainer = document.createElement('div');
         pipContainer.id = 'pipChart';
-        const chartWrapper = document.getElementById('chart')?.parentElement || document.body;
-        chartWrapper.appendChild(pipContainer);
+        pipContainer.style.position = 'relative';
+        pipContainer.style.marginTop = '20px';
+        pipContainer.style.background = 'rgba(255,255,255,0.02)';
+        pipContainer.style.borderRadius = '8px';
+        pipContainer.style.padding = '10px';
+        document.getElementById('chart')?.parentElement.appendChild(pipContainer);
     }
+    
+    let patternLabel = document.getElementById('pip-pattern-label');
+    if (!patternLabel) {
+        patternLabel = document.createElement('div');
+        patternLabel.id = 'pip-pattern-label';
+        // Professional styling for the pattern panel
+        patternLabel.style.minHeight = '60px';
+        patternLabel.style.marginBottom = '10px';
+        patternLabel.style.padding = '12px';
+        patternLabel.style.background = 'rgba(255,255,255,0.05)';
+        patternLabel.style.borderRadius = '6px';
+        patternLabel.style.borderLeft = '4px solid #ffd700';
+        patternLabel.style.fontSize = '13px';
+        patternLabel.style.color = '#fff';
+        pipContainer.appendChild(patternLabel);
+    }
+
+    let chartDiv = document.getElementById('pipChartCanvas');
+    if (!chartDiv) {
+        chartDiv = document.createElement('div');
+        chartDiv.id = 'pipChartCanvas';
+        chartDiv.style.height = '250px';
+        pipContainer.appendChild(chartDiv);
+    }
+    
     pipContainer.style.display = 'block';
-    pipContainer.style.height = '300px';
-    pipContainer.style.width = '100%';
 
     if (pipChartInstance) {
         pipChartInstance.remove();
@@ -2911,7 +2938,7 @@ function renderTacticalChart(candles) {
         pipGhostSeries = null;
     }
 
-    pipChartInstance = createChart(pipContainer, {
+    pipChartInstance = createChart(chartDiv, {
         width: pipContainer.clientWidth || 800,
         height: 180,
         layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
