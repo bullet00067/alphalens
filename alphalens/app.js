@@ -2366,9 +2366,14 @@ function togglePipTactical() {
         if (pipContainer) pipContainer.style.display = 'block';
         if (currentChartData) {
             renderTacticalChart(currentChartData);
-            // Force analysis refresh to ensure stdY is injected
-            const range = currentStockChart.timeScale().getVisibleLogicalRange();
-            if (range) refreshPipAnalysis(range, currentChartData);
+            
+            // FORCE immediate analysis refresh for current view
+            setTimeout(() => {
+                const range = currentStockChart.timeScale().getVisibleLogicalRange();
+                if (range) {
+                    refreshPipAnalysis(range, currentChartData);
+                }
+            }, 100); // Small delay to ensure DOM and Chart Instance are ready
         }
     } else {
         btn.classList.remove('active');
