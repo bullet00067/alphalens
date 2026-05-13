@@ -2367,13 +2367,18 @@ function togglePipTactical() {
         if (currentChartData) {
             renderTacticalChart(currentChartData);
             
-            // FORCE immediate analysis refresh for current view
+            // FORCE immediate analysis refresh for current view + a small buffer for history
             setTimeout(() => {
                 const range = currentStockChart.timeScale().getVisibleLogicalRange();
                 if (range) {
-                    refreshPipAnalysis(range, currentChartData);
+                    // Slightly expand range to the left to capture pattern context
+                    const expandedRange = {
+                        from: range.from - 20, 
+                        to: range.to
+                    };
+                    refreshPipAnalysis(expandedRange, currentChartData);
                 }
-            }, 100); // Small delay to ensure DOM and Chart Instance are ready
+            }, 150); 
         }
     } else {
         btn.classList.remove('active');
