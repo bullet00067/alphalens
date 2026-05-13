@@ -61,8 +61,8 @@ let pipPatternUpperSeries = null;
 let pipPatternLowerSeries = null;
 let pipGhostSeries = null; // Transparent series to force time-scale alignment
 let pipTargetLines = []; // Holds createPriceLine references for 1x/2x amplitude targets
-let tacticalStdMean = 0;  // log10(price) mean used for Z-Score ↔ price conversion
-let tacticalStdDev = 1;   // log10(price) std used for Z-Score ↔ price conversion
+window.tacticalStdMean = 0;  // log10(price) mean used for Z-Score ↔ price conversion
+window.tacticalStdDev = 1;   // log10(price) std used for Z-Score ↔ price conversion
 window.allTacticalPips = []; // Global reference for tactical markers
 window.mainPipMarkers = [];   // Global reference for main markers
 
@@ -2033,31 +2033,41 @@ function refreshPipAnalysis(logicalRange, allData) {
         if (endIdx - startIdx <= 5) return;
         
         const visibleData = allData.slice(startIdx, endIdx + 1);
+        
+        // 1. RE-CALCULATE standard parameters from visible data FIRST
+        const logVals = visibleData.map(c => Math.log10(c.close));
+        if (logVals.length > 0) {
+            window.tacticalStdMean = logVals.reduce((a, b) => a + b, 0) / logVals.length;
+            window.tacticalStdDev = Math.sqrt(logVals.reduce((a, b) => a + Math.pow(b - window.tacticalStdMean, 2), 0) / logVals.length) || 1;
+        }
+
         const pips = findPIPs(visibleData);
         
-        // RE-CALCULATE stdY to prevent NaN on hover
+        // 2. Inject CORRECT stdY using current stats
         pips.forEach(p => {
-            p.stdY = (Math.log10(p.close) - tacticalStdMean) / tacticalStdDev;
+            const price = p.value || p.close; // Handle both schemas
+            if (price && window.tacticalStdDev && window.tacticalStdDev !== 0) {
+                p.stdY = (Math.log10(price) - window.tacticalStdMean) / window.tacticalStdDev;
+            } else {
+                p.stdY = 0;
+            }
+            
+            // Final NaN defense
+            if (isNaN(p.stdY)) p.stdY = 0;
         });
-        window.allTacticalPips = pips; // Update global reference
+        window.allTacticalPips = pips; 
         
-        // 1. Update Main Overlay (if enabled)
+        // 3. Update Main Overlay (if enabled)
         if (isPipOverlayEnabled && pipSeries) {
             pipSeries.setData(pips);
-            const markers = pips.map((p, idx) => {
-                let isHigh;
-                if (idx > 0 && idx < pips.length - 1) {
-                    isHigh = p.value > pips[idx-1].value && p.value > pips[idx+1].value;
-                } else if (idx === 0 && pips.length > 1) {
-                    isHigh = p.value > pips[1].value;
-                } else if (idx === pips.length - 1 && pips.length > 1) {
-                    isHigh = p.value > pips[idx-1].value;
-                } else { isHigh = true; }
+            
+            const markers = pips.map(p => {
+                const isHovered = mainHoverState.time === p.time;
                 return {
                     time: p.time,
-                    position: isHigh ? 'aboveBar' : 'belowBar',
-                    color: isHigh ? '#ef4444' : '#10b981',
-                    shape: isHigh ? 'arrowDown' : 'arrowUp'
+                    position: p.type === 'high' ? 'aboveBar' : 'belowBar',
+                    color: p.type === 'high' ? '#ff4949' : '#00ff00',
+                    shape: p.type === 'high' ? 'arrowDown' : 'arrowUp',
                     // No text property here ensures markers are hidden by default
                 };
             });
@@ -2068,11 +2078,8 @@ function refreshPipAnalysis(logicalRange, allData) {
             createSeriesMarkers(candlestickSeries, markers);
         }
         
-        // 2. Update Tactical Panel (if enabled)
+        // 4. Update Tactical Chart
         if (isPipTacticalEnabled && pipChartInstance) {
-            // Task 3.3: Recompute standardization stats from visibleData to keep σ ↔ price conversion accurate
-            const logVals = visibleData.map(c => Math.log10(c.close));
-            tacticalStdMean = logVals.reduce((a, b) => a + b, 0) / logVals.length;
             tacticalStdDev = Math.sqrt(logVals.reduce((a, b) => a + Math.pow(b - tacticalStdMean, 2), 0) / logVals.length) || 1;
 
             if (pipLineSeries) pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.stdY })));
@@ -2877,18 +2884,22 @@ function renderTacticalChart(candles) {
         return;
     }
 
-    const pipContainer = document.getElementById('pipChart');
-    const patternLabel = document.getElementById('pip-pattern-label');
-    if (!pipContainer || !patternLabel) return;
+    console.log("[TACTICAL] Initializing chart...", { mean: window.tacticalStdMean, dev: window.tacticalStdDev });
+    
+    // Ensure containers exist
+    let pipContainer = document.getElementById('pipChart');
+    if (!pipContainer) {
+        pipContainer = document.createElement('div');
+        pipContainer.id = 'pipChart';
+        const chartWrapper = document.getElementById('chart')?.parentElement || document.body;
+        chartWrapper.appendChild(pipContainer);
+    }
+    pipContainer.style.display = 'block';
+    pipContainer.style.height = '300px';
+    pipContainer.style.width = '100%';
 
     if (pipChartInstance) {
         pipChartInstance.remove();
-        pipChartInstance = null;
-        pipLineSeries = null;
-        patternOverlaySeries = null;
-        structureLabelSeries = null;
-        patternLabelSeries = null;
-        patternUpperSeries = null;
         patternLowerSeries = null;
         pipPatternUpperSeries = null;
         pipPatternLowerSeries = null;
@@ -2967,10 +2978,12 @@ function renderTacticalChart(candles) {
         lastValueVisible: false,
         crosshairMarkerVisible: false
     });
-    // 1. Standardized Main Data (compute once, store params globally for price conversion)
-    const logVals = candles.map(c => Math.log10(c.close));
-    tacticalStdMean = logVals.reduce((a, b) => a + b, 0) / logVals.length;
-    tacticalStdDev = Math.sqrt(logVals.reduce((a, b) => a + Math.pow(b - tacticalStdMean, 2), 0) / logVals.length) || 1;
+    // Calculate mean/std
+    const logPrices = candles.map(c => Math.log10(c.close));
+    window.tacticalStdMean = logPrices.reduce((a, b) => a + b, 0) / logPrices.length;
+    window.tacticalStdDev = Math.sqrt(logPrices.map(x => Math.pow(x - window.tacticalStdMean, 2)).reduce((a, b) => a + b, 0) / logPrices.length);
+
+    if (!window.tacticalStdDev || window.tacticalStdDev === 0) window.tacticalStdDev = 1;
 
     pipGhostSeries.setData(candles.map(c => ({
         time: c.time,
@@ -3048,7 +3061,9 @@ function renderTacticalChart(candles) {
                 // Use the updated global reference
                 const pip = (typeof window.allTacticalPips !== 'undefined' ? window.allTacticalPips : allPips).find(p => p.time === param.time);
                 if (pip && tacticalHoverState.time !== param.time) {
-                    const priceVal = Math.pow(10, pip.stdY * tacticalStdDev + tacticalStdMean);
+                    const m = window.tacticalStdMean || 0;
+                    const d = window.tacticalStdDev || 1;
+                    const priceVal = Math.pow(10, pip.stdY * d + m);
                     const text = `Val: $${priceVal.toFixed(2)}`;
                     const updated = tacticalPipMarkers.map(m => ({
                         ...m,
