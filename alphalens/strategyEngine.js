@@ -165,10 +165,22 @@ export function findPIPs(candles, useCache = true) {
     const bestK = pipNumByMse(pipVdSum);
     const finalK = Math.min(Math.max(bestK, 5), pipIndexByOrder.length);
     const bestPipIndices = pipIndexByOrder.slice(0, finalK);
-    const result = bestPipIndices.sort((a, b) => a - b).map(idx => ({
-        ...data[idx],
-        pipOrder: bestPipIndices.indexOf(idx)
-    }));
+    const sortedIndices = [...bestPipIndices].sort((a, b) => a - b);
+    
+    const result = sortedIndices.map(idx => {
+        const p = data[idx];
+        let type = 'point';
+        // Tag as peak or trough relative to neighbors
+        if (idx > 0 && idx < N - 1) {
+            if (data[idx].value > data[idx-1].value && data[idx].value > data[idx+1].value) type = 'high';
+            else if (data[idx].value < data[idx-1].value && data[idx].value < data[idx+1].value) type = 'low';
+        }
+        return {
+            ...p,
+            type: type,
+            pipOrder: bestPipIndices.indexOf(idx)
+        };
+    });
 
     if (useCache) pipCache.set(cacheKey, result);
     return result;
@@ -217,8 +229,7 @@ export function analyzeTrend(pips, candles = []) {
         const isHH = peaks[pLen-1].value > peaks[pLen-2].value;
 
         if (isHL && isHH) {
-            const avgVd = pips.reduce((sum, p) => sum + (p.vd || 0), 0) / pips.length;
-            return { status: 'BULLISH', confidence: Math.min(avgVd, 1.0), peaks, troughs };
+            return { status: 'BULLISH', confidence: 0.9, peaks, troughs };
         }
     }
 
@@ -231,8 +242,7 @@ export function analyzeTrend(pips, candles = []) {
         const isLH = peaks[pLen-1].value < peaks[pLen-2].value;
 
         if (isLL && isLH) {
-            const avgVd = pips.reduce((sum, p) => sum + (p.vd || 0), 0) / pips.length;
-            return { status: 'BEARISH', confidence: Math.min(avgVd, 1.0), peaks, troughs };
+            return { status: 'BEARISH', confidence: 0.9, peaks, troughs };
         }
     }
 

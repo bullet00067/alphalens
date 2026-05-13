@@ -2127,7 +2127,12 @@ function refreshPipAnalysis(logicalRange, allData) {
                 
                 renderPatternGeometry(p, pips, pipChartInstance);
             } else {
-                patternLabel.style.display = 'none';
+                patternLabel.style.display = 'block';
+                patternLabel.style.minHeight = '60px'; 
+                patternLabel.innerHTML = `<div style="opacity: 0.5; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    SCANNING FOR PATTERN SIGNALS...
+                </div>`;
                 if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
                 if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
                 renderAmplitudeTargets(null, null); // Clear target lines
@@ -2367,18 +2372,28 @@ function togglePipTactical() {
         if (currentChartData) {
             renderTacticalChart(currentChartData);
             
-            // FORCE immediate analysis refresh for current view + a small buffer for history
-            setTimeout(() => {
-                const range = currentStockChart.timeScale().getVisibleLogicalRange();
-                if (range) {
-                    // Slightly expand range to the left to capture pattern context
-                    const expandedRange = {
-                        from: range.from - 20, 
-                        to: range.to
-                    };
-                    refreshPipAnalysis(expandedRange, currentChartData);
-                }
-            }, 150); 
+            // UI FIRST: Immediately show the panel and scanning status
+            const patternLabel = document.getElementById('pip-pattern-label');
+            if (patternLabel) {
+                patternLabel.style.display = 'block';
+                patternLabel.innerHTML = `<div style="opacity: 0.5; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    INITIALIZING TACTICAL ANALYSIS...
+                </div>`;
+            }
+
+            // FORCE immediate analysis refresh with retries to handle async init
+            const triggerRefresh = (delay) => {
+                setTimeout(() => {
+                    const range = currentStockChart.timeScale().getVisibleLogicalRange();
+                    if (range) {
+                        refreshPipAnalysis(range, currentChartData);
+                    }
+                }, delay);
+            };
+
+            triggerRefresh(150);
+            triggerRefresh(500); // Second pass to ensure chart instance is bound
         }
     } else {
         btn.classList.remove('active');
@@ -2922,7 +2937,10 @@ function renderTacticalChart(candles) {
         patternLabel.style.borderLeft = '4px solid #ffd700';
         patternLabel.style.fontSize = '13px';
         patternLabel.style.color = '#fff';
+        patternLabel.style.display = 'block'; // FORCE VISIBLE ON CREATION
         pipContainer.appendChild(patternLabel);
+    } else {
+        patternLabel.style.display = 'block'; // FORCE VISIBLE IF EXISTS
     }
 
     let chartDiv = document.getElementById('pipChartCanvas');
