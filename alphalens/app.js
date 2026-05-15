@@ -2091,13 +2091,10 @@ function refreshPipAnalysis(logicalRange, allData) {
                 const p = signal.patterns[0];
                 const prob = signal.probability || { bullish: 50, bearish: 50 };
 
-                // Task 3.1 + 3.2: Calculate amplitude & render target lines
-                const targets = renderAmplitudeTargets(p, pips);
-
                 patternLabel.innerHTML = `
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span>PATTERN: <strong>${p.name}</strong></span>
+                            <span style="color: ${p.color}; font-weight: bold;">${p.name} (相似度: ${p.similarity}%)</span>
                             <span style="font-size: 0.9em; font-weight: bold;">
                                 <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
                                 <span style="opacity: 0.5; margin: 0 4px;">|</span>
@@ -2108,25 +2105,20 @@ function refreshPipAnalysis(logicalRange, allData) {
                             <div style="width: ${prob.bullish}%; background: #22c55e; height: 100%;"></div>
                             <div style="width: ${prob.bearish}%; background: #ef4444; height: 100%;"></div>
                         </div>
-                        ${targets ? `
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-top: 4px; font-size: 11px;">
-                            <span style="color: #22c55e;">▲ 1x: <strong>$${targets.up1x.toFixed(2)}</strong></span>
-                            <span style="color: #16a34a;">▲ 2x: <strong>$${targets.up2x.toFixed(2)}</strong></span>
-                            <span style="color: #ef4444;">▼ 1x: <strong>$${targets.dn1x.toFixed(2)}</strong></span>
-                            <span style="color: #dc2626;">▼ 2x: <strong>$${targets.dn2x.toFixed(2)}</strong></span>
-                        </div>` : ''}
                     </div>
                 `;
                 patternLabel.style.display = 'flex';
-                patternLabel.style.background = 'rgba(15, 23, 42, 0.8)';
-                patternLabel.style.backdropFilter = 'blur(4px)';
+                patternLabel.style.background = 'rgba(15, 23, 42, 0.9)';
+                patternLabel.style.backdropFilter = 'blur(8px)';
                 patternLabel.style.color = '#f8fafc';
                 patternLabel.style.borderLeft = `4px solid ${p.color}`;
-                patternLabel.style.padding = '10px 14px';
-                patternLabel.style.borderRadius = '4px';
+                patternLabel.style.padding = '12px 16px';
+                patternLabel.style.borderRadius = '6px';
+                patternLabel.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
                 
                 renderPatternGeometry(p, pips, pipChartInstance);
             } else {
+                if (pipHighlightSeries) pipHighlightSeries.setData([]);
                 patternLabel.style.display = 'block';
                 patternLabel.style.minHeight = '60px'; 
                 patternLabel.innerHTML = `<div style="opacity: 0.5; font-size: 12px; display: flex; align-items: center; gap: 8px;">
@@ -2888,6 +2880,22 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
     }
 
     createSeriesMarkers(patternLabelSeries, markers);
+
+    // 3. DRAW HIGHLIGHT LINE on Tactical Chart
+    if (pipHighlightSeries && pattern.points) {
+        const sortedPoints = [...pattern.points].sort((a, b) => a.time - b.time);
+        const highlightData = sortedPoints.map(p => ({
+            time: p.time,
+            value: p.stdY
+        }));
+        
+        pipHighlightSeries.applyOptions({
+            color: pattern.color,
+            lineWidth: 4,
+            lineStyle: 0
+        });
+        pipHighlightSeries.setData(highlightData);
+    }
 }
 
 // --- Charting Modules ---

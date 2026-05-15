@@ -321,6 +321,7 @@ export function calculateMA(candles, period) {
 
 /**
  * PatternRecognitionModule: Identify geometric patterns from PIPs
+ * Now with similarity scoring (0-100%)
  */
 export function identifyPatterns(pips, useCache = true) {
     if (pips.length < 5) return [];
@@ -337,27 +338,26 @@ export function identifyPatterns(pips, useCache = true) {
         if (pips[i].value < pips[i-1].value && pips[i].value < pips[i+1].value) troughs.push(pips[i]);
     }
 
-    const patterns = [];
+    let patterns = [];
     
-    // 1. Check for Triangles
-    const triangle = checkTriangle(peaks, troughs);
-    if (triangle) patterns.push(triangle);
+    // 1. Check for Triangles & Wedges
+    const triangleWedge = checkTriangleAndWedge(peaks, troughs);
+    if (triangleWedge) patterns.push(triangleWedge);
 
-    // 1.5 Check for Rectangle
-    const rectangle = checkRectangle(peaks, troughs);
-    if (rectangle) patterns.push(rectangle);
+    // 2. Check for Rectangle & Flags
+    const rectFlag = checkRectangleAndFlag(peaks, troughs, pips);
+    if (rectFlag) patterns.push(rectFlag);
 
-    // 2. Check for Double Patterns (M/W)
-    const doublePattern = checkDoublePattern(peaks, troughs);
+    // 3. Check for Double Patterns (M/W) with Similarity
+    const doublePattern = checkDoublePatternWithScore(peaks, troughs);
     if (doublePattern) patterns.push(doublePattern);
 
-    // 3. Check for Head and Shoulders
+    // 4. Check for Head and Shoulders
     const hs = checkHeadAndShoulders(peaks, troughs);
     if (hs) patterns.push(hs);
 
-    // 4. Check for Triple Top/Bottom
-    const triple = checkTriplePattern(peaks, troughs);
-    if (triple) patterns.push(triple);
+    // Sort by similarity score descending
+    patterns.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
 
     if (useCache) {
         patternCache.set(cacheKey, patterns);
@@ -366,9 +366,9 @@ export function identifyPatterns(pips, useCache = true) {
 }
 
 /**
- * Logic for Triangle patterns
+ * Enhanced Triangle & Wedge logic
  */
-function checkTriangle(peaks, troughs) {
+function checkTriangleAndWedge(peaks, troughs) {
     if (peaks.length < 2 || troughs.length < 2) return null;
     
     const p1 = peaks[peaks.length - 2];
@@ -381,52 +381,46 @@ function checkTriangle(peaks, troughs) {
     
     const normUpper = sUpper / p1.value;
     const normLower = sLower / t1.value;
-    const tol = STRATEGY_CONFIG.TRIANGLE_TOLERANCE;
+    const tol = 0.002; // Relaxed tolerance
 
-    // Ascending Triangle: Flat top, rising bottom
-    if (Math.abs(normUpper) < tol && normLower > tol) {
-        const height = p1.value - t1.value;
-        return { 
-            type: 'ASCENDING_TRIANGLE', name: '上升三角', color: '#22c55e', 
-            points: [p1, p2, t1, t2], height,
-            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
-            probability: { bullish: 70, bearish: 30 }
-        };
-    }
-    
-    // Descending Triangle: Falling top, flat bottom
-    if (normUpper < -tol && Math.abs(normLower) < tol) {
-        const height = p1.value - t1.value;
-        return { 
-            type: 'DESCENDING_TRIANGLE', name: '下降三角', color: '#ef4444', 
-            points: [p1, p2, t1, t2], height,
-            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
-            probability: { bullish: 30, bearish: 70 }
-        };
-    }
-    
-    // Symmetrical Triangle: Falling top, rising bottom
+    // 1. Symmetrical Triangle (Converging)
     if (normUpper < -tol && normLower > tol) {
-        const height = p1.value - t1.value;
+        const sim = Math.min(100, Math.round((Math.abs(normUpper) + Math.abs(normLower)) / 0.02 * 100));
         return { 
             type: 'SYMMETRICAL_TRIANGLE', name: '對稱三角', color: '#eab308', 
-            points: [p1, p2, t1, t2], height,
-            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
+            points: [p1, p2, t1, t2], similarity: Math.max(70, sim),
+            upperSlope: sUpper, lowerSlope: sLower,
             probability: { bullish: 50, bearish: 50 }
         };
     }
-    
-    
+
+    // 2. Falling Wedge (Both falling, but upper falls faster)
+    if (normUpper < -tol && normLower < -tol && normUpper < normLower) {
+        return { 
+            type: 'FALLING_WEDGE', name: '下降楔形', color: '#22c55e', 
+            points: [p1, p2, t1, t2], similarity: 85,
+            upperSlope: sUpper, lowerSlope: sLower,
+            probability: { bullish: 75, bearish: 25 }
+        };
+    }
+
+    // 3. Rising Wedge (Both rising, but lower rises faster)
+    if (normUpper > tol && normLower > tol && normLower > normUpper) {
+        return { 
+            type: 'RISING_WEDGE', name: '上升楔形', color: '#ef4444', 
+            points: [p1, p2, t1, t2], similarity: 85,
+            upperSlope: sUpper, lowerSlope: sLower,
+            probability: { bullish: 25, bearish: 75 }
+        };
+    }
+
     return null;
 }
 
 /**
- * Logic for Rectangle pattern
+ * Enhanced Rectangle & Flag logic
  */
-function checkRectangle(peaks, troughs) {
+function checkRectangleAndFlag(peaks, troughs, pips) {
     if (peaks.length < 2 || troughs.length < 2) return null;
     
     const p1 = peaks[peaks.length - 2];
@@ -439,17 +433,25 @@ function checkRectangle(peaks, troughs) {
     
     const normUpper = sUpper / p1.value;
     const normLower = sLower / t1.value;
-    const tol = STRATEGY_CONFIG.RECTANGLE_TOLERANCE;
+    const tol = 0.001;
 
-    // Rectangle: Flat top, flat bottom
-    if (Math.abs(normUpper) < tol && Math.abs(normLower) < tol) {
-        const height = p1.value - t1.value;
+    // Parallel check
+    const parallelScore = 1 - Math.abs(normUpper - normLower) / 0.01;
+
+    if (parallelScore > 0.7) {
+        // If slopes are near zero -> Rectangle
+        if (Math.abs(normUpper) < tol && Math.abs(normLower) < tol) {
+            return { 
+                type: 'RECTANGLE', name: '矩形區間', color: '#3b82f6', 
+                points: [p1, p2, t1, t2], similarity: Math.round(parallelScore * 100),
+                probability: { bullish: 50, bearish: 50 }
+            };
+        }
+        // If slopes are same direction -> Flag
         return { 
-            type: 'RECTANGLE', name: '矩形區間', color: '#3b82f6', 
-            points: [p1, p2, t1, t2], height,
-            upperSlope: sUpper, upperIntercept: p1.value - sUpper * p1.index,
-            lowerSlope: sLower, lowerIntercept: t1.value - sLower * t1.index,
-            probability: { bullish: 50, bearish: 50 }
+            type: 'FLAG', name: '旗形整理', color: '#a855f7', 
+            points: [p1, p2, t1, t2], similarity: Math.round(parallelScore * 100),
+            probability: { bullish: 60, bearish: 40 }
         };
     }
     
@@ -457,26 +459,25 @@ function checkRectangle(peaks, troughs) {
 }
 
 /**
- * Logic for Double Top/Bottom (M/W)
+ * Double Top/Bottom with Similarity Score
  */
-function checkDoublePattern(peaks, troughs) {
-    const tol = STRATEGY_CONFIG.DOUBLE_PATTERN_TOLERANCE;
-    
+function checkDoublePatternWithScore(peaks, troughs) {
     // Double Bottom (W)
     if (troughs.length >= 2) {
         const t1 = troughs[troughs.length - 2];
         const t2 = troughs[troughs.length - 1];
         const diff = Math.abs(t1.value - t2.value) / ((t1.value + t2.value) / 2);
         
-        if (diff < tol) {
-            // Height is from trough to the peak between them
+        // Even if diff is up to 5%, we consider it a W-Bottom with lower score
+        if (diff < 0.05) {
+            const similarity = Math.round((1 - (diff / 0.05)) * 100);
             const relevantPips = peaks.filter(p => p.index > t1.index && p.index < t2.index);
             const midPeak = relevantPips.length > 0 ? Math.max(...relevantPips.map(p => p.value)) : t1.value * 1.05;
-            const height = midPeak - ((t1.value + t2.value) / 2);
+            
             return { 
                 type: 'DOUBLE_BOTTOM', name: 'W底 (雙重底)', color: '#22c55e', 
-                points: [t1, t2], height, neckline: midPeak,
-                probability: { bullish: 85, bearish: 15 }
+                points: [t1, t2], similarity, neckline: midPeak,
+                probability: { bullish: 80, bearish: 20 }
             };
         }
     }
@@ -487,14 +488,15 @@ function checkDoublePattern(peaks, troughs) {
         const p2 = peaks[peaks.length - 1];
         const diff = Math.abs(p1.value - p2.value) / ((p1.value + p2.value) / 2);
         
-        if (diff < tol) {
+        if (diff < 0.05) {
+            const similarity = Math.round((1 - (diff / 0.05)) * 100);
             const relevantTroughs = troughs.filter(t => t.index > p1.index && t.index < p2.index);
             const midTrough = relevantTroughs.length > 0 ? Math.min(...relevantTroughs.map(t => t.value)) : p1.value * 0.95;
-            const height = ((p1.value + p2.value) / 2) - midTrough;
+            
             return { 
                 type: 'DOUBLE_TOP', name: 'M頭 (雙重頂)', color: '#ef4444', 
-                points: [p1, p2], height, neckline: midTrough,
-                probability: { bullish: 15, bearish: 85 }
+                points: [p1, p2], similarity, neckline: midTrough,
+                probability: { bullish: 20, bearish: 80 }
             };
         }
     }
@@ -503,53 +505,19 @@ function checkDoublePattern(peaks, troughs) {
 }
 
 function checkHeadAndShoulders(peaks, troughs) {
-    const tol = STRATEGY_CONFIG.HS_PATTERN_TOLERANCE;
     if (peaks.length >= 3) {
         const p1 = peaks[peaks.length - 3];
         const p2 = peaks[peaks.length - 2];
         const p3 = peaks[peaks.length - 1];
         if (p2.value > p1.value && p2.value > p3.value) {
             const shoulderDiff = Math.abs(p1.value - p3.value) / ((p1.value + p3.value) / 2);
-            if (shoulderDiff < tol) {
-                const neckTroughs = troughs.filter(t => t.index > p1.index && t.index < p3.index);
-                const neckline = neckTroughs.length > 0 ? neckTroughs.reduce((sum, t) => sum + t.value, 0) / neckTroughs.length : Math.min(p1.value, p3.value) * 0.95;
-                return { type: 'HEAD_AND_SHOULDERS', name: '頭肩頂', color: '#ef4444', points: [p1, p2, p3], neckline };
+            if (shoulderDiff < 0.05) {
+                return { 
+                    type: 'HEAD_AND_SHOULDERS', name: '頭肩頂', color: '#ef4444', 
+                    points: [p1, p2, p3], similarity: Math.round((1 - shoulderDiff/0.05) * 100) 
+                };
             }
         }
-    }
-    if (troughs.length >= 3) {
-        const t1 = troughs[troughs.length - 3];
-        const t2 = troughs[troughs.length - 2];
-        const t3 = troughs[troughs.length - 1];
-        if (t2.value < t1.value && t2.value < t3.value) {
-            const shoulderDiff = Math.abs(t1.value - t3.value) / ((t1.value + t3.value) / 2);
-            if (shoulderDiff < tol) {
-                const neckPeaks = peaks.filter(p => p.index > t1.index && p.index < t3.index);
-                const neckline = neckPeaks.length > 0 ? neckPeaks.reduce((sum, p) => sum + p.value, 0) / neckPeaks.length : Math.max(t1.value, t3.value) * 1.05;
-                return { type: 'INVERTED_HS', name: '頭肩底', color: '#22c55e', points: [t1, t2, t3], neckline };
-            }
-        }
-    }
-    return null;
-}
-
-function checkTriplePattern(peaks, troughs) {
-    const tol = STRATEGY_CONFIG.TRIPLE_PATTERN_TOLERANCE;
-    if (peaks.length >= 3) {
-        const p1 = peaks[peaks.length - 3];
-        const p2 = peaks[peaks.length - 2];
-        const p3 = peaks[peaks.length - 1];
-        const maxP = Math.max(p1.value, p2.value, p3.value);
-        const minP = Math.min(p1.value, p2.value, p3.value);
-        if ((maxP - minP) / minP < tol) return { type: 'TRIPLE_TOP', name: '三重頂', color: '#ef4444', points: [p1, p2, p3] };
-    }
-    if (troughs.length >= 3) {
-        const t1 = troughs[troughs.length - 3];
-        const t2 = troughs[troughs.length - 2];
-        const t3 = troughs[troughs.length - 1];
-        const maxT = Math.max(t1.value, t2.value, t3.value);
-        const minT = Math.min(t1.value, t2.value, t3.value);
-        if ((maxT - minT) / minT < tol) return { type: 'TRIPLE_BOTTOM', name: '三重底', color: '#22c55e', points: [t1, t2, t3] };
     }
     return null;
 }
@@ -559,47 +527,21 @@ function checkTriplePattern(peaks, troughs) {
  */
 export function calculateProbability(signal, trend, candles) {
     if (!candles || candles.length < 20) return { bullish: 50, bearish: 50 };
-
-    let score = 50; // Base score (Neutral)
-
-    // 1. Trend Impact (30%)
+    let score = 50; 
     if (trend.status === 'BULLISH') score += 15;
     if (trend.status === 'BEARISH') score -= 15;
-    if (trend.status === 'CONSOLIDATION') score += 5;
-
-    // 2. Signal Impact (30%)
     if (signal.signal === 'BUY') score += 20;
     if (signal.signal === 'SELL') score -= 20;
 
-    // 3. Technical Context (20%)
-    const last = candles[candles.length - 1];
-    const ma20 = calculateMA(candles, 20);
-    const ma60 = calculateMA(candles, 60);
-
-    if (last.close > ma20) score += 5;
-    if (last.close > ma60) score += 5;
-    if (last.close < ma20) score -= 5;
-    if (last.close < ma60) score -= 5;
-
-    // 4. Pattern Impact (20%)
     if (signal.patterns && signal.patterns.length > 0) {
         const p = signal.patterns[0];
-        // Breakout boost
-        const isBreakout = signal.details && signal.details.reason && signal.details.reason.includes('BREAKOUT');
-        
-        if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'SYMMETRICAL_TRIANGLE', 'RECTANGLE'].includes(p.type)) {
-            score += isBreakout ? 20 : 10;
-        }
-        if (['DESCENDING_TRIANGLE', 'DOUBLE_TOP'].includes(p.type)) {
-            score -= isBreakout ? 20 : 10;
-        }
+        const weight = (p.similarity || 80) / 100;
+        if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'FLAG', 'FALLING_WEDGE'].includes(p.type)) score += (20 * weight);
+        if (['DESCENDING_TRIANGLE', 'DOUBLE_TOP', 'RISING_WEDGE'].includes(p.type)) score -= (20 * weight);
     }
 
-    // Clamp score
-    const bullish = Math.min(98, Math.max(2, score));
-    const bearish = 100 - bullish;
-
-    return { bullish, bearish };
+    const bullish = Math.min(98, Math.max(2, Math.round(score)));
+    return { bullish, bearish: 100 - bullish };
 }
 
 /**
@@ -613,65 +555,18 @@ export function generatePIPSignal(candles, providedPips = null) {
     const pips = providedPips || findPIPs(candles);
     const trend = analyzeTrend(pips, candles);
     const patterns = identifyPatterns(pips);
-    const entry = evaluateEntry(candles, pips, trend);
     
-    let confidence = trend.confidence;
-    let patternText = '';
-    let finalSignal = { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', confidence: 0, patterns };
+    let finalSignal = { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', patterns };
 
     if (patterns.length > 0) {
-        confidence = Math.min(1.0, confidence + 0.15);
-        patternText = ` (${patterns[0].name})`;
-        
         const p = patterns[0];
-        const last = candles[candles.length - 1];
-        const prev = candles[candles.length - 2];
+        finalSignal.text = `${p.name} (相似度 ${p.similarity}%)`;
+        finalSignal.color = p.color;
         
-        // 1. Triangle or Rectangle Breakout
-        if (p.type.includes('TRIANGLE') || p.type === 'RECTANGLE') {
-            const p1 = p.points[0]; const p2 = p.points[1];
-            const t1 = p.points[2]; const t2 = p.points[3];
-            const upperVal = p1.value + calculateSlope(p1, p2) * (candles.length - 1 - p1.index);
-            const lowerVal = t1.value + calculateSlope(t1, t2) * (candles.length - 1 - t1.index);
-            
-            if (last.close > upperVal && prev.close <= upperVal) {
-                const targetPrice = last.close + p.height;
-                finalSignal = { signal: 'BUY', text: `🚀 向上突破${p.name}`, color: '#22c55e', details: { reason: 'BREAKOUT_UP', patterns, targetPrice }, confidence: 0.9 };
-            } else if (last.close < lowerVal && prev.close >= lowerVal) {
-                const targetPrice = last.close - p.height;
-                finalSignal = { signal: 'SELL', text: `⚠️ 向下跌破${p.name}`, color: '#ef4444', details: { reason: 'BREAKOUT_DOWN', patterns, targetPrice }, confidence: 0.9 };
-            }
-        }
-        
-        // 2. Double Pattern Breakout
-        if (finalSignal.signal === 'NEUTRAL') {
-            if (p.type === 'DOUBLE_BOTTOM' && last.close > p.neckline && prev.close <= p.neckline) {
-                const targetPrice = last.close + p.height;
-                finalSignal = { signal: 'BUY', text: `🚀 W底頸線突破`, color: '#22c55e', details: { reason: 'W_BREAKOUT', patterns, targetPrice }, confidence: 0.9 };
-            } else if (p.type === 'DOUBLE_TOP' && last.close < p.neckline && prev.close >= p.neckline) {
-                const targetPrice = last.close - p.height;
-                finalSignal = { signal: 'SELL', text: `⚠️ M頭頸線跌破`, color: '#ef4444', details: { reason: 'M_BREAKOUT', patterns, targetPrice }, confidence: 0.9 };
-            }
-        }
+        if (p.probability.bullish > 60) finalSignal.signal = 'BUY';
+        if (p.probability.bearish > 60) finalSignal.signal = 'SELL';
     }
 
-    if (finalSignal.signal === 'NEUTRAL' && entry) {
-        finalSignal = { 
-            signal: 'BUY', 
-            text: `🟢 ${entry.reason}${patternText}`, 
-            color: '#22c55e', 
-            details: { ...entry, patterns },
-            confidence: confidence 
-        };
-    }
-
-    if (finalSignal.signal === 'NEUTRAL') {
-        if (trend.status === 'BULLISH') finalSignal = { signal: 'HOLD', text: `🔵 多頭持股${patternText}`, color: '#3b82f6', confidence: confidence, patterns };
-        else if (trend.status === 'BEARISH') finalSignal = { signal: 'NEUTRAL', text: `🔴 空頭勢頭${patternText}`, color: '#ef4444', confidence: confidence, patterns };
-        else if (trend.status === 'CONSOLIDATION') finalSignal = { signal: 'NEUTRAL', text: `🟡 區間盤整${patternText}`, color: '#eab308', confidence: confidence, patterns };
-    }
-
-    // Attach probability
     finalSignal.probability = calculateProbability(finalSignal, trend, candles);
     return finalSignal;
 }
