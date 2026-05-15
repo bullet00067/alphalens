@@ -49,6 +49,8 @@ let currentMarketTab = 'ALL'; // 'ALL', 'US', 'TW'
 const twStockNames = {}; // Cache for Taiwan stock names
 let pipChartInstance = null;
 let pipLineSeries = null;
+let pipHighlightSeries = null; // New for pattern line highlighting
+let isSyncing = false; // Add sync lock to prevent feedback loops
 let isPipTacticalEnabled = false;
 let isPipOverlayEnabled = false;
 let mainPipSeries = null;
@@ -2996,17 +2998,52 @@ function renderTacticalChart(candles) {
         timeScale: { 
             visible: true, 
             borderVisible: false,
-            borderColor: 'rgba(255,255,255,0.1)'
+            borderColor: 'rgba(255,255,255,0.1)',
+            rightOffset: 12, // Match main chart offset
+            barSpacing: 6,   // Initial spacing
         },
         rightPriceScale: { 
             borderVisible: false,
-            minimumWidth: 100, // Same fixed width as main chart
+            minimumWidth: 100,
             lastValueVisible: false
         },
         localization: {
             priceFormatter: price => price.toFixed(2),
         },
         crosshair: { mode: CrosshairMode.Normal }
+    });
+
+    // --- CHART SYNC LOGIC ---
+    const mainChart = candlestickSeries.chart();
+    
+    // 1. Sync Time Scales (Scrolling/Zooming)
+    mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (isSyncing || !range) return;
+        isSyncing = true;
+        pipChartInstance.timeScale().setVisibleLogicalRange(range);
+        isSyncing = false;
+    });
+
+    pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
+        if (isSyncing || !range) return;
+        isSyncing = true;
+        mainChart.timeScale().setVisibleLogicalRange(range);
+        isSyncing = false;
+    });
+
+    // 2. Sync Crosshair (Vertical Lines)
+    mainChart.subscribeCrosshairMove(param => {
+        if (isSyncing || !param || !param.time) return;
+        isSyncing = true;
+        pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
+        isSyncing = false;
+    });
+
+    pipChartInstance.subscribeCrosshairMove(param => {
+        if (isSyncing || !param || !param.time) return;
+        isSyncing = true;
+        mainChart.setCrosshairPosition(0, param.time, candlestickSeries);
+        isSyncing = false;
     });
 
     // Add a label indicating standardized units
