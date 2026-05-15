@@ -459,45 +459,51 @@ function checkRectangleAndFlag(peaks, troughs, pips) {
 }
 
 /**
- * Double Top/Bottom with Similarity Score
+ * Double Top/Bottom with Full Shape Tracing
  */
 function checkDoublePatternWithScore(peaks, troughs) {
-    // Double Bottom (W)
+    const tol = 0.05;
+    
+    // Double Bottom (W) - Captures: [Trough1, MidPeak, Trough2]
     if (troughs.length >= 2) {
         const t1 = troughs[troughs.length - 2];
         const t2 = troughs[troughs.length - 1];
         const diff = Math.abs(t1.value - t2.value) / ((t1.value + t2.value) / 2);
         
-        // Even if diff is up to 5%, we consider it a W-Bottom with lower score
-        if (diff < 0.05) {
-            const similarity = Math.round((1 - (diff / 0.05)) * 100);
-            const relevantPips = peaks.filter(p => p.index > t1.index && p.index < t2.index);
-            const midPeak = relevantPips.length > 0 ? Math.max(...relevantPips.map(p => p.value)) : t1.value * 1.05;
+        if (diff < tol) {
+            const similarity = Math.round((1 - (diff / tol)) * 100);
+            const relevantPeaks = peaks.filter(p => p.index > t1.index && p.index < t2.index);
+            // Find the actual peak object to form the 'W'
+            const midPeak = relevantPeaks.length > 0 ? relevantPeaks.reduce((prev, curr) => (prev.value > curr.value) ? prev : curr) : null;
             
-            return { 
-                type: 'DOUBLE_BOTTOM', name: 'W底 (雙重底)', color: '#22c55e', 
-                points: [t1, t2], similarity, neckline: midPeak,
-                probability: { bullish: 80, bearish: 20 }
-            };
+            if (midPeak) {
+                return { 
+                    type: 'DOUBLE_BOTTOM', name: 'W底 (雙重底)', color: '#22c55e', 
+                    points: [t1, midPeak, t2], similarity, neckline: midPeak.value,
+                    probability: { bullish: 80, bearish: 20 }
+                };
+            }
         }
     }
     
-    // Double Top (M)
+    // Double Top (M) - Captures: [Peak1, MidTrough, Peak2]
     if (peaks.length >= 2) {
         const p1 = peaks[peaks.length - 2];
         const p2 = peaks[peaks.length - 1];
         const diff = Math.abs(p1.value - p2.value) / ((p1.value + p2.value) / 2);
         
-        if (diff < 0.05) {
-            const similarity = Math.round((1 - (diff / 0.05)) * 100);
+        if (diff < tol) {
+            const similarity = Math.round((1 - (diff / tol)) * 100);
             const relevantTroughs = troughs.filter(t => t.index > p1.index && t.index < p2.index);
-            const midTrough = relevantTroughs.length > 0 ? Math.min(...relevantTroughs.map(t => t.value)) : p1.value * 0.95;
+            const midTrough = relevantTroughs.length > 0 ? relevantTroughs.reduce((prev, curr) => (prev.value < curr.value) ? prev : curr) : null;
             
-            return { 
-                type: 'DOUBLE_TOP', name: 'M頭 (雙重頂)', color: '#ef4444', 
-                points: [p1, p2], similarity, neckline: midTrough,
-                probability: { bullish: 20, bearish: 80 }
-            };
+            if (midTrough) {
+                return { 
+                    type: 'DOUBLE_TOP', name: 'M頭 (雙重頂)', color: '#ef4444', 
+                    points: [p1, midTrough, p2], similarity, neckline: midTrough.value,
+                    probability: { bullish: 20, bearish: 80 }
+                };
+            }
         }
     }
     
@@ -512,10 +518,16 @@ function checkHeadAndShoulders(peaks, troughs) {
         if (p2.value > p1.value && p2.value > p3.value) {
             const shoulderDiff = Math.abs(p1.value - p3.value) / ((p1.value + p3.value) / 2);
             if (shoulderDiff < 0.05) {
-                return { 
-                    type: 'HEAD_AND_SHOULDERS', name: '頭肩頂', color: '#ef4444', 
-                    points: [p1, p2, p3], similarity: Math.round((1 - shoulderDiff/0.05) * 100) 
-                };
+                // Find necklines between shoulders and head
+                const neck1 = troughs.filter(t => t.index > p1.index && t.index < p2.index).slice(-1)[0];
+                const neck2 = troughs.filter(t => t.index > p2.index && t.index < p3.index)[0];
+                if (neck1 && neck2) {
+                    return { 
+                        type: 'HEAD_AND_SHOULDERS', name: '頭肩頂', color: '#ef4444', 
+                        points: [p1, neck1, p2, neck2, p3], 
+                        similarity: Math.round((1 - shoulderDiff/0.05) * 100) 
+                    };
+                }
             }
         }
     }
