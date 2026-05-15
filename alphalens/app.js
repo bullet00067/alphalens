@@ -2950,7 +2950,7 @@ function renderTacticalChart(candles) {
         pipContainer.style.background = 'rgba(255,255,255,0.02)';
         pipContainer.style.borderRadius = '8px';
         pipContainer.style.padding = '10px';
-        document.getElementById('chart')?.parentElement.appendChild(pipContainer);
+        document.getElementById('stockChart')?.parentElement.appendChild(pipContainer);
     }
     
     let patternLabel = document.getElementById('pip-pattern-label');
@@ -3014,37 +3014,41 @@ function renderTacticalChart(candles) {
     });
 
     // --- CHART SYNC LOGIC ---
-    const mainChart = candlestickSeries.chart();
-    
-    // 1. Sync Time Scales (Scrolling/Zooming)
-    mainChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-        if (isSyncing || !range) return;
-        isSyncing = true;
-        pipChartInstance.timeScale().setVisibleLogicalRange(range);
-        isSyncing = false;
-    });
+    try {
+        if (currentStockChart) {
+            // 1. Sync Time Scales (Scrolling/Zooming)
+            currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                if (isSyncing || !range) return;
+                isSyncing = true;
+                try { pipChartInstance.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+                isSyncing = false;
+            });
 
-    pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
-        if (isSyncing || !range) return;
-        isSyncing = true;
-        mainChart.timeScale().setVisibleLogicalRange(range);
-        isSyncing = false;
-    });
+            pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
+                if (isSyncing || !range) return;
+                isSyncing = true;
+                try { currentStockChart.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+                isSyncing = false;
+            });
 
-    // 2. Sync Crosshair (Vertical Lines)
-    mainChart.subscribeCrosshairMove(param => {
-        if (isSyncing || !param || !param.time) return;
-        isSyncing = true;
-        pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
-        isSyncing = false;
-    });
+            // 2. Sync Crosshair (Vertical Lines)
+            currentStockChart.subscribeCrosshairMove(param => {
+                if (isSyncing || !param || !param.time) return;
+                isSyncing = true;
+                try { pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries); } catch(e) {}
+                isSyncing = false;
+            });
 
-    pipChartInstance.subscribeCrosshairMove(param => {
-        if (isSyncing || !param || !param.time) return;
-        isSyncing = true;
-        mainChart.setCrosshairPosition(0, param.time, candlestickSeries);
-        isSyncing = false;
-    });
+            pipChartInstance.subscribeCrosshairMove(param => {
+                if (isSyncing || !param || !param.time) return;
+                isSyncing = true;
+                try { currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries); } catch(e) {}
+                isSyncing = false;
+            });
+        }
+    } catch(syncErr) {
+        console.warn('[TACTICAL] Chart sync setup failed (non-critical):', syncErr);
+    }
 
     // Add a label indicating standardized units
     const statsLabel = document.createElement('div');
