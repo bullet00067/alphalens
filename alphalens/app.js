@@ -2881,20 +2881,39 @@ function renderPatternLabels(pattern, tacticalSignal, candles, chartInstance) {
 
     createSeriesMarkers(patternLabelSeries, markers);
 
-    // 3. DRAW HIGHLIGHT LINE on Tactical Chart
-    if (pipHighlightSeries && pattern.points) {
-        const sortedPoints = [...pattern.points].sort((a, b) => a.time - b.time);
-        const highlightData = sortedPoints.map(p => ({
-            time: p.time,
-            value: p.stdY
-        }));
-        
-        pipHighlightSeries.applyOptions({
-            color: pattern.color,
-            lineWidth: 4,
-            lineStyle: 0
-        });
-        pipHighlightSeries.setData(highlightData);
+    // 3. DRAW SHAPES on Tactical Chart
+    // Clear previous shapes first
+    if (pipHighlightSeries) pipHighlightSeries.setData([]);
+    if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
+    if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
+
+    if (pattern.points) {
+        if (['DOUBLE_BOTTOM', 'DOUBLE_TOP', 'HEAD_AND_SHOULDERS'].includes(pattern.type)) {
+            // M/W/HS: Draw a single continuous ZIGZAG line
+            const sortedPoints = [...pattern.points].sort((a, b) => a.time - b.time);
+            const highlightData = sortedPoints.map(p => ({ time: p.time, value: p.stdY }));
+            if (pipHighlightSeries) {
+                pipHighlightSeries.applyOptions({ color: pattern.color, lineWidth: 4 });
+                pipHighlightSeries.setData(highlightData);
+            }
+        } else {
+            // Triangles, Wedges, Rectangles, Flags: Draw UPPER and LOWER boundary lines
+            const pips = window.allTacticalPips;
+            if (pips && pips.length > 0) {
+                // Determine upper/lower from the points
+                const upperPoints = pattern.points.filter(p => p.type === 'high').sort((a,b) => a.time - b.time);
+                const lowerPoints = pattern.points.filter(p => p.type === 'low').sort((a,b) => a.time - b.time);
+                
+                if (upperPoints.length >= 2 && pipPatternUpperSeries) {
+                    pipPatternUpperSeries.applyOptions({ color: pattern.color, lineWidth: 3, lineStyle: 1 }); // Dashed for boundary
+                    pipPatternUpperSeries.setData(upperPoints.map(p => ({ time: p.time, value: p.stdY })));
+                }
+                if (lowerPoints.length >= 2 && pipPatternLowerSeries) {
+                    pipPatternLowerSeries.applyOptions({ color: pattern.color, lineWidth: 3, lineStyle: 1 });
+                    pipPatternLowerSeries.setData(lowerPoints.map(p => ({ time: p.time, value: p.stdY })));
+                }
+            }
+        }
     }
 }
 
@@ -3027,6 +3046,30 @@ function renderTacticalChart(candles) {
         visible: false,
         priceLineVisible: false,
         lastValueVisible: false
+    });
+
+    pipPatternUpperSeries = pipChartInstance.addSeries(LineSeries, {
+        lineWidth: 2,
+        lineStyle: 2, // Dashed
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+    });
+
+    pipPatternLowerSeries = pipChartInstance.addSeries(LineSeries, {
+        lineWidth: 2,
+        lineStyle: 2, // Dashed
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+    });
+
+    // Unified Highlight series for M/W
+    pipHighlightSeries = pipChartInstance.addSeries(LineSeries, {
+        lineWidth: 4,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
     });
 
     patternLabelSeries = pipChartInstance.addSeries(LineSeries, {
