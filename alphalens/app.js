@@ -1224,38 +1224,39 @@ function calculateAISignals(ticker, candles) {
     const entryPrice = portfolioItem ? portfolioItem.cost : lastPrice;
     const qty = portfolioItem ? portfolioItem.qty : 0;
     
-    // Stop Loss (Tactical: Higher of Last PIP Trough or ATR-based stop from current price)
-    const lastTrough = trend.troughs.length > 0 ? trend.troughs[trend.troughs.length-1].value : 0;
-    
-    // Rule: SL should be below current price and adapt to trend
+    // Stop Loss and Targets (Directional)
     let stopLoss;
-    if (lastTrough > 0 && lastTrough < lastPrice) {
-        // Use trough if it's within a reasonable distance (not 50% away)
-        const troughDist = (lastPrice - lastTrough) / lastPrice;
-        if (troughDist < 0.15) {
-            stopLoss = lastTrough;
+    let tp1, tp2;
+    const isBearish = pipSignal.signal === 'SELL';
+    
+    if (isBearish) {
+        // For bearish, stop loss is above last peak or ATR
+        const lastPeak = trend.peaks.length > 0 ? trend.peaks[trend.peaks.length-1].value : 0;
+        if (lastPeak > lastPrice) {
+            const peakDist = (lastPeak - lastPrice) / lastPrice;
+            stopLoss = (peakDist < 0.15) ? lastPeak : lastPrice + (2 * atr);
+        } else {
+            stopLoss = lastPrice + (2 * atr);
+        }
+        const riskPerShare = stopLoss - lastPrice;
+        tp1 = lastPrice - (2 * riskPerShare);
+        tp2 = lastPrice - (3 * riskPerShare);
+    } else {
+        // For bullish/neutral, stop loss is below last trough or ATR
+        const lastTrough = trend.troughs.length > 0 ? trend.troughs[trend.troughs.length-1].value : 0;
+        if (lastTrough > 0 && lastTrough < lastPrice) {
+            const troughDist = (lastPrice - lastTrough) / lastPrice;
+            stopLoss = (troughDist < 0.15) ? lastTrough : lastPrice - (2 * atr);
         } else {
             stopLoss = lastPrice - (2 * atr);
         }
-    } else {
-        stopLoss = lastPrice - (2 * atr);
-    }
-    
-    const riskPerShare = lastPrice - stopLoss;
-    
-    // Targets (Tactical: based on current price risk or pattern height)
-    let tp1 = lastPrice + (2 * riskPerShare);
-    let tp2 = lastPrice + (3 * riskPerShare);
-    
-    if (pipSignal.details && pipSignal.details.targetPrice) {
-        // If it's a BUY signal with a pattern target, use it as TP1
-        if (pipSignal.signal === 'BUY') {
-            tp1 = pipSignal.details.targetPrice;
-            tp2 = tp1 + (riskPerShare); // TP2 is 1R further
-        }
+        const riskPerShare = lastPrice - stopLoss;
+        tp1 = lastPrice + (2 * riskPerShare);
+        tp2 = lastPrice + (3 * riskPerShare);
     }
     
     // Projected P/L (Based on actual entry cost if in portfolio)
+    // For shorting, impact calculation would be reversed, but assume long-only portfolio for P/L text for now
     const slImpact = qty * (stopLoss - entryPrice);
     const tp1Impact = qty * (tp1 - entryPrice);
     const tp2Impact = qty * (tp2 - entryPrice);
@@ -2093,10 +2094,26 @@ function refreshPipAnalysis(logicalRange, allData) {
                 const p = signal.patterns[0];
                 const prob = signal.probability || { bullish: 50, bearish: 50 };
 
+                let statusBadge = '';
+                if (p.status === 'CONFIRMED') {
+                    statusBadge = '<span style="background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;">已確認</span>';
+                } else if (p.status === 'FORMING') {
+                    statusBadge = '<span style="background: rgba(234, 179, 8, 0.2); color: #eab308; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;">成形中</span>';
+                }
+
+                let volBadge = '';
+                if (p.volumeConfirmed) {
+                    volBadge = '<span style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;"><i class="fa-solid fa-chart-simple"></i> 量能確認</span>';
+                }
+
                 patternLabel.innerHTML = `
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="color: ${p.color}; font-weight: bold;">${p.name} (相似度: ${p.similarity}%)</span>
+                            <div>
+                                <span style="color: ${p.color}; font-weight: bold;">${p.name} (相似度: ${p.similarity}%)</span>
+                                ${statusBadge}
+                                ${volBadge}
+                            </div>
                             <span style="font-size: 0.9em; font-weight: bold;">
                                 <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
                                 <span style="opacity: 0.5; margin: 0 4px;">|</span>
@@ -2641,12 +2658,16 @@ function renderAmplitudeTargets(pattern, pips) {
     // Task 5.1: Helper to convert σ back to price using current standardization params
     const toPrice = sigma => Math.pow(10, sigma * tacticalStdDev + tacticalStdMean);
 
-    const targetDefs = [
-        { value: up1x,  label: `▲ 1x: $${toPrice(up1x).toFixed(2)}`, color: '#22c55e', style: 2 },  // dashed
-        { value: up2x,  label: `▲ 2x: $${toPrice(up2x).toFixed(2)}`, color: '#16a34a', style: 1 },  // dotted
-        { value: dn1x,  label: `▼ 1x: $${toPrice(dn1x).toFixed(2)}`, color: '#ef4444', style: 2 },
-        { value: dn2x,  label: `▼ 2x: $${toPrice(dn2x).toFixed(2)}`, color: '#dc2626', style: 1 },
-    ];
+    const targetDefs = [];
+    if (isNetBullish) {
+        targetDefs.push({ value: up1x,  label: `▲ 1x: $${toPrice(up1x).toFixed(2)}`, color: '#22c55e', style: 2 });
+        targetDefs.push({ value: up2x,  label: `▲ 2x: $${toPrice(up2x).toFixed(2)}`, color: '#16a34a', style: 1 });
+        targetDefs.push({ value: dn1x,  label: `🛑 STOP: $${toPrice(dn1x).toFixed(2)}`, color: '#ef4444', style: 2 });
+    } else {
+        targetDefs.push({ value: dn1x,  label: `▼ 1x: $${toPrice(dn1x).toFixed(2)}`, color: '#ef4444', style: 2 });
+        targetDefs.push({ value: dn2x,  label: `▼ 2x: $${toPrice(dn2x).toFixed(2)}`, color: '#dc2626', style: 1 });
+        targetDefs.push({ value: up1x,  label: `🛑 STOP: $${toPrice(up1x).toFixed(2)}`, color: '#22c55e', style: 2 });
+    }
 
     targetDefs.forEach(def => {
         const line = pipLineSeries.createPriceLine({

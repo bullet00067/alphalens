@@ -323,7 +323,7 @@ export function calculateMA(candles, period) {
  * PatternRecognitionModule: Identify geometric patterns from PIPs
  * Now with similarity scoring (0-100%)
  */
-export function identifyPatterns(pips, useCache = true) {
+export function identifyPatterns(pips, candles = null, useCache = true) {
     if (pips.length < 5) return [];
     
     const cacheKey = pips.map(p => `${p.time}-${p.value.toFixed(4)}`).join('|');
@@ -359,10 +359,80 @@ export function identifyPatterns(pips, useCache = true) {
     // Sort by similarity score descending
     patterns.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
 
+    // Post-process with status and volume
+    if (candles && candles.length > 0) {
+        const currentClose = candles[candles.length - 1].close;
+        patterns.forEach(p => {
+            determinePatternStatus(p, currentClose);
+            checkVolumeConfirmation(p, candles);
+        });
+    }
+
     if (useCache) {
         patternCache.set(cacheKey, patterns);
     }
     return patterns;
+}
+
+function determinePatternStatus(pattern, currentClose) {
+    if (!pattern) return;
+    pattern.status = 'FORMING'; // Default
+    
+    if (pattern.type === 'DOUBLE_BOTTOM' || pattern.type === 'HEAD_AND_SHOULDERS') {
+        if (pattern.neckline && currentClose > pattern.neckline) pattern.status = 'CONFIRMED';
+    } else if (pattern.type === 'DOUBLE_TOP') {
+        if (pattern.neckline && currentClose < pattern.neckline) pattern.status = 'CONFIRMED';
+    } else if (['DESCENDING_TRIANGLE', 'FALLING_WEDGE'].includes(pattern.type)) {
+        // Bullish breakout approximation
+        if (pattern.points.length >= 2 && currentClose > pattern.points[0].value) pattern.status = 'CONFIRMED';
+    } else if (['ASCENDING_TRIANGLE', 'RISING_WEDGE'].includes(pattern.type)) {
+        // Bearish breakdown approximation
+        if (pattern.points.length >= 4 && currentClose < pattern.points[2].value) pattern.status = 'CONFIRMED';
+    } else if (['RECTANGLE', 'FLAG', 'SYMMETRIC_TRIANGLE'].includes(pattern.type)) {
+        if (pattern.points.length >= 4) {
+            if (currentClose > pattern.points[0].value || currentClose < pattern.points[2].value) {
+                pattern.status = 'CONFIRMED';
+            }
+        }
+    }
+}
+
+function checkVolumeConfirmation(pattern, candles) {
+    if (!pattern || !candles || candles.length < 10) return;
+    pattern.volumeConfirmed = false;
+    
+    // Safety check for points array
+    if (!pattern.points || pattern.points.length < 2) return;
+    
+    // Sort points by time to find the start and end of the pattern
+    const sortedPoints = [...pattern.points].sort((a, b) => a.time - b.time);
+    const firstPoint = sortedPoints[0];
+    const lastPoint = sortedPoints[sortedPoints.length - 1];
+    
+    const startIndex = candles.findIndex(c => c.time === firstPoint.time);
+    const endIndex = candles.findIndex(c => c.time === lastPoint.time);
+    
+    if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) return;
+    
+    let totalVol = 0;
+    for (let i = startIndex; i <= endIndex; i++) {
+        totalVol += (candles[i].volume || 0);
+    }
+    const avgVol = totalVol / (endIndex - startIndex + 1);
+    
+    // Recent volume (last 3 candles)
+    let recentVol = 0;
+    let count = 0;
+    for (let i = Math.max(0, candles.length - 3); i < candles.length; i++) {
+         recentVol += (candles[i].volume || 0);
+         count++;
+    }
+    const avgRecentVol = recentVol / (count || 1);
+    
+    // If recent volume is 20% higher than pattern average, it's confirmed
+    if (avgRecentVol > avgVol * 1.2) {
+         pattern.volumeConfirmed = true;
+    }
 }
 
 /**
@@ -550,6 +620,16 @@ export function calculateProbability(signal, trend, candles) {
         const weight = (p.similarity || 80) / 100;
         if (['ASCENDING_TRIANGLE', 'DOUBLE_BOTTOM', 'FLAG', 'FALLING_WEDGE'].includes(p.type)) score += (20 * weight);
         if (['DESCENDING_TRIANGLE', 'DOUBLE_TOP', 'RISING_WEDGE'].includes(p.type)) score -= (20 * weight);
+        
+        // Adjust for volume and status
+        if (p.volumeConfirmed) {
+             if (score > 50) score += 10;
+             else score -= 10;
+        }
+        if (p.status === 'CONFIRMED') {
+             if (score > 50) score += 10;
+             else score -= 10;
+        }
     }
 
     const bullish = Math.min(98, Math.max(2, Math.round(score)));
@@ -566,7 +646,7 @@ export function generatePIPSignal(candles, providedPips = null) {
 
     const pips = providedPips || findPIPs(candles);
     const trend = analyzeTrend(pips, candles);
-    const patterns = identifyPatterns(pips);
+    const patterns = identifyPatterns(pips, candles);
     
     let finalSignal = { signal: 'NEUTRAL', text: '⚪️ 趨勢不明', color: 'var(--text-secondary)', patterns };
 
