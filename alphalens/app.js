@@ -1225,34 +1225,40 @@ function calculateAISignals(ticker, candles) {
     const qty = portfolioItem ? portfolioItem.qty : 0;
     
     // Stop Loss and Targets (Directional)
+    // When in portfolio, anchor SL/TP from entryPrice (均價) so numbers reflect actual holding risk
+    const anchorPrice = portfolioItem ? entryPrice : lastPrice;
     let stopLoss;
     let tp1, tp2;
     const isBearish = pipSignal.signal === 'SELL';
     
     if (isBearish) {
-        // For bearish, stop loss is above last peak or ATR
+        // For bearish, stop loss is above last peak or ATR (relative to anchorPrice)
         const lastPeak = trend.peaks.length > 0 ? trend.peaks[trend.peaks.length-1].value : 0;
         if (lastPeak > lastPrice) {
             const peakDist = (lastPeak - lastPrice) / lastPrice;
-            stopLoss = (peakDist < 0.15) ? lastPeak : lastPrice + (2 * atr);
+            const rawSL = (peakDist < 0.15) ? lastPeak : lastPrice + (2 * atr);
+            // Shift SL proportionally to anchor if in portfolio
+            stopLoss = portfolioItem ? anchorPrice + (rawSL - lastPrice) : rawSL;
         } else {
-            stopLoss = lastPrice + (2 * atr);
+            stopLoss = anchorPrice + (2 * atr);
         }
-        const riskPerShare = stopLoss - lastPrice;
-        tp1 = lastPrice - (2 * riskPerShare);
-        tp2 = lastPrice - (3 * riskPerShare);
+        const riskPerShare = stopLoss - anchorPrice;
+        tp1 = anchorPrice - (2 * riskPerShare);
+        tp2 = anchorPrice - (3 * riskPerShare);
     } else {
-        // For bullish/neutral, stop loss is below last trough or ATR
+        // For bullish/neutral, stop loss is below last trough or ATR (relative to anchorPrice)
         const lastTrough = trend.troughs.length > 0 ? trend.troughs[trend.troughs.length-1].value : 0;
         if (lastTrough > 0 && lastTrough < lastPrice) {
             const troughDist = (lastPrice - lastTrough) / lastPrice;
-            stopLoss = (troughDist < 0.15) ? lastTrough : lastPrice - (2 * atr);
+            const rawSL = (troughDist < 0.15) ? lastTrough : lastPrice - (2 * atr);
+            // Shift SL proportionally to anchor if in portfolio
+            stopLoss = portfolioItem ? anchorPrice - (lastPrice - rawSL) : rawSL;
         } else {
-            stopLoss = lastPrice - (2 * atr);
+            stopLoss = anchorPrice - (2 * atr);
         }
-        const riskPerShare = lastPrice - stopLoss;
-        tp1 = lastPrice + (2 * riskPerShare);
-        tp2 = lastPrice + (3 * riskPerShare);
+        const riskPerShare = anchorPrice - stopLoss;
+        tp1 = anchorPrice + (2 * riskPerShare);
+        tp2 = anchorPrice + (3 * riskPerShare);
     }
     
     // Evaluate Entry signals (Entry A and Entry B)
@@ -3419,6 +3425,15 @@ function renderTacticalChart(candles) {
     `;
 }
 
+// Returns currency symbol: NT$ for TW stocks, $ for US
+function getCurrencySymbol(ticker) {
+    if (!ticker) return '$';
+    // TW stocks: 4-digit numeric codes, or well-known TW suffixes
+    if (/^\d{4,}$/.test(ticker)) return 'NT$';
+    if (/\.(TW|TWO)$/i.test(ticker)) return 'NT$';
+    return '$';
+}
+
 function updateAISignals(ticker, candles) {
     const signalCard = document.getElementById('ai-signal-card');
     if (!candles || candles.length === 0) {
@@ -3449,6 +3464,7 @@ function updateAISignals(ticker, candles) {
         signalCard.style.display = 'block';
         const sig = signals.signal;
         const trend = signals.trend;
+        const currencySymbol = getCurrencySymbol(ticker);
         
         // 2. Determine risk reward rating badge
         const r1 = parseFloat(signals.rrRatio1.split(':')[1]);
@@ -3507,10 +3523,10 @@ function updateAISignals(ticker, candles) {
             portfolioHtml = `
                 <div class="strategy-analysis" style="margin-top: 16px; border: 1px dashed rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.03);">
                     <strong style="color: var(--accent-primary);"><i class="fa-solid fa-briefcase"></i> 投資組合持倉分析 (Portfolio Exposure):</strong><br>
-                    您的持倉均價: <span style="font-weight: 700; color: #f8fafc;">$${signals.entryPrice}</span> | 
-                    觸發停損預估損益: <span style="font-weight: 700; color: ${isLoss ? 'var(--negative)' : 'var(--positive)'};">${signals.slImpact >= 0 ? '+' : ''}$${signals.slImpact}</span><br>
-                    達目標 1 預估損益: <span style="font-weight: 700; color: ${isTp1Win ? 'var(--positive)' : 'var(--negative)'};">+${signals.tp1Impact}</span> | 
-                    達目標 2 預估損益: <span style="font-weight: 700; color: var(--positive);">+${signals.tp2Impact}</span>
+                    您的持倉均價: <span style="font-weight: 700; color: #f8fafc;">${currencySymbol}${signals.entryPrice}</span> | 
+                    觸發停損預估損益: <span style="font-weight: 700; color: ${isLoss ? 'var(--negative)' : 'var(--positive)'};">${signals.slImpact >= 0 ? '+' : ''}${currencySymbol}${signals.slImpact}</span><br>
+                    達目標 1 預估損益: <span style="font-weight: 700; color: ${isTp1Win ? 'var(--positive)' : 'var(--negative)'};">${signals.tp1Impact >= 0 ? '+' : ''}${currencySymbol}${signals.tp1Impact}</span> | 
+                    達目標 2 預估損益: <span style="font-weight: 700; color: var(--positive);">+${currencySymbol}${signals.tp2Impact}</span>
                 </div>
             `;
         }
@@ -3532,15 +3548,15 @@ function updateAISignals(ticker, candles) {
                 <div class="strategy-grid">
                     <div class="stat-item">
                         <span class="stat-label">Stop Loss (PIP/ATR)</span>
-                        <span class="stat-value negative">$${signals.stopLoss}</span>
+                        <span class="stat-value negative">${currencySymbol}${signals.stopLoss}</span>
                     </div>
                     <div class="stat-item">
                         <span class="stat-label">Target 1 (R:R ${signals.rrRatio1})</span>
-                        <span class="stat-value positive">$${signals.tp1}</span>
+                        <span class="stat-value positive">${currencySymbol}${signals.tp1}</span>
                     </div>
                     <div class="stat-item">
                         <span class="stat-label">Target 2 (R:R ${signals.rrRatio2})</span>
-                        <span class="stat-value positive">$${signals.tp2}</span>
+                        <span class="stat-value positive">${currencySymbol}${signals.tp2}</span>
                     </div>
                     <div class="stat-item">
                         <span class="stat-label">Confidence</span>
@@ -3561,28 +3577,28 @@ function updateAISignals(ticker, candles) {
                             <div class="rr-node" style="left: 0%;">
                                 <div class="rr-node-dot sl"></div>
                                 <span class="rr-node-label">停損 SL</span>
-                                <span class="rr-node-price">$${signals.stopLoss}</span>
+                                <span class="rr-node-price">${currencySymbol}${signals.stopLoss}</span>
                             </div>
                             
                             <!-- Current Price Node -->
                             <div class="rr-node" style="left: ${cpPct}%;">
                                 <div class="rr-node-dot cp" title="Current Price"></div>
                                 <span class="rr-node-label cp">現價</span>
-                                <span class="rr-node-price cp">$${signals.currentPrice}</span>
+                                <span class="rr-node-price cp">${currencySymbol}${signals.currentPrice}</span>
                             </div>
                             
                             <!-- Target 1 Node -->
                             <div class="rr-node" style="left: ${tp1Pct}%;">
                                 <div class="rr-node-dot tp1"></div>
                                 <span class="rr-node-label">目標 1</span>
-                                <span class="rr-node-price">$${signals.tp1}</span>
+                                <span class="rr-node-price">${currencySymbol}${signals.tp1}</span>
                             </div>
                             
                             <!-- Target 2 Node -->
                             <div class="rr-node" style="left: 100%;">
                                 <div class="rr-node-dot tp2"></div>
                                 <span class="rr-node-label">目標 2</span>
-                                <span class="rr-node-price">$${signals.tp2}</span>
+                                <span class="rr-node-price">${currencySymbol}${signals.tp2}</span>
                             </div>
                         </div>
                     </div>
