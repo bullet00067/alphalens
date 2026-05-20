@@ -8,7 +8,25 @@ const puppeteer = require('puppeteer');
   page.on('console', msg => {
     if (msg.type() === 'error') {
       errorCount++;
-      if (errorCount < 10) console.log('BROWSER ERROR:', msg.text());
+      console.log('BROWSER ERROR:', msg.text());
+    }
+  });
+  
+  page.on('pageerror', err => {
+    errorCount++;
+    console.log('PAGE EXCEPTION:', err.toString());
+  });
+
+  page.on('requestfailed', request => {
+    errorCount++;
+    console.log('REQUEST FAILED:', request.url(), request.failure().errorText);
+  });
+
+  page.on('response', response => {
+    const status = response.status();
+    if (status >= 400) {
+      errorCount++;
+      console.log(`HTTP ERROR ${status}:`, response.url());
     }
   });
   

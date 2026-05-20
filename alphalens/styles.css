@@ -1239,30 +1239,36 @@ tbody tr:hover {
         font-size: 20px;
     }
 
-    /* Mobile Responsive Chart Controls - Grid Approach */
+    /* Mobile Responsive Chart Controls - Premium Horizontal Scroll-Strip Approach */
     @media (max-width: 768px) {
         .chart-toolbar {
             display: flex !important;
-            flex-wrap: wrap !important;
+            flex-wrap: nowrap !important; /* Force single row, no wrapping */
+            overflow-x: auto !important; /* Smooth horizontal scroll */
+            -webkit-overflow-scrolling: touch !important; /* Smooth momentum scrolling on iOS */
             gap: 8px !important;
             padding: 8px 4px !important;
             width: 100% !important;
             max-width: 100vw !important;
-            overflow-x: visible !important;
             justify-content: flex-start !important;
             box-sizing: border-box !important;
+            scrollbar-width: none; /* Hide scrollbar for Firefox */
+        }
+        
+        .chart-toolbar::-webkit-scrollbar {
+            display: none !important; /* Hide scrollbar for Chrome/Safari */
         }
         
         .control-group {
             display: flex !important;
-            flex-wrap: wrap !important;
+            flex-wrap: nowrap !important; /* No wrapping inside groups either */
             align-items: center;
             background: rgba(255, 255, 255, 0.04);
-            padding: 6px 8px;
+            padding: 6px 10px;
             border-radius: 8px;
-            gap: 4px;
+            gap: 6px;
             border: 1px solid var(--border-glass);
-            flex: 0 1 auto;
+            flex-shrink: 0 !important; /* Prevent squishing of group card */
         }
         
         .indicator-btn, .tf-btn {
@@ -1270,39 +1276,65 @@ tbody tr:hover {
             font-size: 12px !important;
             min-height: 34px;
             border-radius: 6px;
-            flex: 0 1 auto;
+            flex-shrink: 0 !important; /* Prevent button squishing */
         }
 
         #clear-indicators-btn {
-            width: 100%;
-            margin-top: 4px;
-            justify-content: center;
+            margin-left: 8px !important;
+            flex-shrink: 0 !important;
             background: rgba(239, 68, 68, 0.1);
             border: 1px solid rgba(239, 68, 68, 0.2);
             order: 99; /* Always last */
+            min-height: 34px;
+            padding: 6px 12px !important;
+            border-radius: 6px;
         }
         
         .chart-container {
-            padding: 8px !important;
+            padding: 12px !important;
+        }
+
+        /* Dynamically resize charts on mobile portrait to avoid excessive vertical scrolling */
+        #stockChart {
+            min-height: 280px !important;
+            height: 280px !important;
+        }
+
+        #rsiChart, #pipChart {
+            min-height: 120px !important;
+            height: 120px !important;
+        }
+        
+        .sidebar {
+            overflow-y: auto !important; /* Prevent buttons clipping in mobile landscape */
         }
     }
+    
     /* Table to Card Transformation - Premium Upgrade */
     .table-responsive thead {
         display: none !important;
     }
 
     .table-responsive tbody tr {
-        background: rgba(255, 255, 255, 0.03);
-        margin-bottom: 20px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
+        margin-bottom: 16px;
         border-radius: 16px;
-        border: 1px solid var(--border-glass);
-        padding: 20px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        padding: 16px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
         display: grid !important;
         grid-template-columns: 1fr 1fr;
-        gap: 12px;
+        gap: 10px;
         position: relative;
         width: 100%;
+        transition: transform var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+    }
+
+    /* Tactile Mobile Touch Feedback */
+    .table-responsive tbody tr:active {
+        transform: scale(0.98);
+        border-color: rgba(59, 130, 246, 0.3) !important;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
     }
 
     .table-responsive td {
@@ -1614,4 +1646,161 @@ tbody tr:hover {
     background: rgba(234, 179, 8, 0.2) !important;
     border-color: #eab308 !important;
     color: #eab308 !important;
+}
+
+/* Upgraded Trade Playbook Styles */
+.playbook-container {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.playbook-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #f8fafc;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.playbook-title i {
+    color: var(--accent-primary);
+}
+
+/* Linear Timeline for Risk-Reward */
+.rr-timeline-container {
+    margin: 32px 0 24px 0;
+    padding: 0 16px;
+}
+
+.rr-timeline {
+    position: relative;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+}
+
+.rr-timeline-progress {
+    position: absolute;
+    height: 100%;
+    background: linear-gradient(90deg, #ef4444 0%, #3b82f6 50%, #22c55e 100%);
+    border-radius: 3px;
+    opacity: 0.15;
+}
+
+.rr-node {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+
+.rr-node-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid #0f172a;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+
+.rr-node-dot.sl {
+    background: #ef4444;
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+}
+
+.rr-node-dot.cp {
+    background: #3b82f6;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid #f8fafc;
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+    z-index: 2;
+}
+
+.rr-node-dot.tp1 {
+    background: #10b981;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+}
+
+.rr-node-dot.tp2 {
+    background: #22c55e;
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.6);
+}
+
+.rr-node-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.rr-node-label.cp {
+    color: #3b82f6;
+    font-weight: 700;
+    font-size: 11px;
+}
+
+.rr-node-price {
+    font-size: 9px;
+    opacity: 0.8;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.rr-node-price.cp {
+    color: #f8fafc;
+    opacity: 1;
+    font-weight: 700;
+}
+
+/* Alert Banners */
+.alert-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    animation: pulseGlow 2.5s infinite ease-in-out;
+}
+
+.alert-banner.opportunity {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #34d399;
+}
+
+.alert-banner.opportunity i {
+    color: #34d399;
+}
+
+.alert-banner.warning {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+}
+
+.alert-banner.warning i {
+    color: #f87171;
+}
+
+@keyframes pulseGlow {
+    0% {
+        box-shadow: 0 0 4px rgba(255, 255, 255, 0);
+    }
+    50% {
+        box-shadow: 0 0 12px rgba(255, 255, 255, 0.05);
+    }
+    100% {
+        box-shadow: 0 0 4px rgba(255, 255, 255, 0);
+    }
 }

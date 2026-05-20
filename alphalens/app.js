@@ -1,5 +1,5 @@
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
-import { generatePIPSignal, findPIPs, analyzeTrend } from './strategyEngine.js';
+import { generatePIPSignal, findPIPs, analyzeTrend, evaluateEntry, evaluateExit } from './strategyEngine.js';
 
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "firebase/auth";
@@ -1255,8 +1255,27 @@ function calculateAISignals(ticker, candles) {
         tp2 = lastPrice + (3 * riskPerShare);
     }
     
+    // Evaluate Entry signals (Entry A and Entry B)
+    const entrySignal = evaluateEntry(recentCandles, pips, trend);
+    
+    // Evaluate Exit signals for portfolio positions
+    let exitSignal = null;
+    if (portfolioItem) {
+        const pos = {
+            cost: portfolioItem.cost,
+            stopLoss: parseFloat(stopLoss.toFixed(2))
+        };
+        exitSignal = evaluateExit(recentCandles, pips, pos);
+    }
+    
+    // Calculate Risk/Reward Ratio based on active entry cost or current price
+    const risk = Math.abs(entryPrice - stopLoss);
+    const reward1 = Math.abs(tp1 - entryPrice);
+    const reward2 = Math.abs(tp2 - entryPrice);
+    const rrRatio1 = risk > 0 ? (reward1 / risk).toFixed(1) : '2.0';
+    const rrRatio2 = risk > 0 ? (reward2 / risk).toFixed(1) : '3.0';
+
     // Projected P/L (Based on actual entry cost if in portfolio)
-    // For shorting, impact calculation would be reversed, but assume long-only portfolio for P/L text for now
     const slImpact = qty * (stopLoss - entryPrice);
     const tp1Impact = qty * (tp1 - entryPrice);
     const tp2Impact = qty * (tp2 - entryPrice);
@@ -1273,7 +1292,11 @@ function calculateAISignals(ticker, candles) {
         entryPrice: entryPrice.toFixed(2),
         currentPrice: lastPrice,
         trend: trend,
-        signal: pipSignal
+        signal: pipSignal,
+        rrRatio1: `1:${rrRatio1}`,
+        rrRatio2: `1:${rrRatio2}`,
+        entrySignal: entrySignal,
+        exitSignal: exitSignal
     };
 }
 
@@ -3402,6 +3425,23 @@ function updateAISignals(ticker, candles) {
         if (signalCard) signalCard.style.display = 'none';
         return;
     }
+    
+    // 1. Safe PriceLine Cleanup to eliminate visual stacking and memory leakage
+    if (candlestickSeries) {
+        if (currentStopLossLine) {
+            try { candlestickSeries.removePriceLine(currentStopLossLine); } catch (e) {}
+            currentStopLossLine = null;
+        }
+        if (currentTp1Line) {
+            try { candlestickSeries.removePriceLine(currentTp1Line); } catch (e) {}
+            currentTp1Line = null;
+        }
+        if (currentTp2Line) {
+            try { candlestickSeries.removePriceLine(currentTp2Line); } catch (e) {}
+            currentTp2Line = null;
+        }
+    }
+
     const signals = calculateAISignals(ticker, candles);
     if (!signalCard) return;
 
@@ -3410,13 +3450,83 @@ function updateAISignals(ticker, candles) {
         const sig = signals.signal;
         const trend = signals.trend;
         
+        // 2. Determine risk reward rating badge
+        const r1 = parseFloat(signals.rrRatio1.split(':')[1]);
+        let rrBadge = `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2);">差 (Poor)</span>`;
+        if (r1 >= 2.5) {
+            rrBadge = `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2);">極佳 (Excellent)</span>`;
+        } else if (r1 >= 1.8) {
+            rrBadge = `<span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.2);">良 (Good)</span>`;
+        } else if (r1 >= 1.0) {
+            rrBadge = `<span class="badge" style="background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.2);">一般 (Fair)</span>`;
+        }
+
+        // 3. Setup Alert Banners
+        let alertHtml = '';
+        if (signals.exitSignal) {
+            alertHtml = `
+                <div class="alert-banner warning">
+                    <i class="fa-solid fa-triangle-exclamation fa-fade"></i>
+                    <span>⚠️ 戰術減碼警告: ${signals.exitSignal.reason} (${signals.exitSignal.type === 'EXIT_STOP' ? '停損觸發' : signals.exitSignal.type === 'EXIT_TRAILING' ? '跌破五日線' : '高檔爆量/長上影線'}) - 建議減碼防守！</span>
+                </div>
+            `;
+        } else if (signals.entrySignal) {
+            alertHtml = `
+                <div class="alert-banner opportunity">
+                    <i class="fa-solid fa-lightbulb fa-bounce"></i>
+                    <span>💡 入場交易契機: ${signals.entrySignal.reason} (${signals.entrySignal.type === 'ENTRY_A' ? '盤整突破' : '回後買上漲'}) - 適合分批佈局建倉！</span>
+                </div>
+            `;
+        }
+
+        // 4. Calculate Risk-Reward timeline positions
+        const slVal = parseFloat(signals.stopLoss);
+        const cpVal = parseFloat(signals.currentPrice);
+        const tp1Val = parseFloat(signals.tp1);
+        const tp2Val = parseFloat(signals.tp2);
+        
+        let cpPct, tp1Pct;
+        const isBearish = sig.signal === 'SELL';
+        if (isBearish) {
+            const range = slVal - tp2Val;
+            cpPct = range > 0 ? ((slVal - cpVal) / range) * 100 : 50;
+            tp1Pct = range > 0 ? ((slVal - tp1Val) / range) * 100 : 66.6;
+        } else {
+            const range = tp2Val - slVal;
+            cpPct = range > 0 ? ((cpVal - slVal) / range) * 100 : 50;
+            tp1Pct = range > 0 ? ((tp1Val - slVal) / range) * 100 : 66.6;
+        }
+        cpPct = Math.max(0, Math.min(100, cpPct));
+        tp1Pct = Math.max(0, Math.min(100, tp1Pct));
+
+        // 5. Portfolio Context Info
+        let portfolioHtml = '';
+        if (signals.inPortfolio) {
+            const isLoss = parseFloat(signals.slImpact) < 0;
+            const isTp1Win = parseFloat(signals.tp1Impact) > 0;
+            portfolioHtml = `
+                <div class="strategy-analysis" style="margin-top: 16px; border: 1px dashed rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.03);">
+                    <strong style="color: var(--accent-primary);"><i class="fa-solid fa-briefcase"></i> 投資組合持倉分析 (Portfolio Exposure):</strong><br>
+                    您的持倉均價: <span style="font-weight: 700; color: #f8fafc;">$${signals.entryPrice}</span> | 
+                    觸發停損預估損益: <span style="font-weight: 700; color: ${isLoss ? 'var(--negative)' : 'var(--positive)'};">${signals.slImpact >= 0 ? '+' : ''}$${signals.slImpact}</span><br>
+                    達目標 1 預估損益: <span style="font-weight: 700; color: ${isTp1Win ? 'var(--positive)' : 'var(--negative)'};">+${signals.tp1Impact}</span> | 
+                    達目標 2 預估損益: <span style="font-weight: 700; color: var(--positive);">+${signals.tp2Impact}</span>
+                </div>
+            `;
+        }
+
         signalCard.innerHTML = `
             <div class="glass-panel strategy-card" style="border-left: 4px solid ${sig.color};">
+                ${alertHtml}
+                
                 <div class="strategy-header">
                     <h3 class="strategy-title">
                         <i class="fa-solid fa-robot"></i> AI Strategy: <span style="color: ${sig.color}">${sig.text}</span>
                     </h3>
-                    <span class="badge strategy-badge">${trend.status}</span>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        ${rrBadge}
+                        <span class="badge strategy-badge">${trend.status}</span>
+                    </div>
                 </div>
                 
                 <div class="strategy-grid">
@@ -3425,11 +3535,11 @@ function updateAISignals(ticker, candles) {
                         <span class="stat-value negative">$${signals.stopLoss}</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">Target 1 (1:2)</span>
+                        <span class="stat-label">Target 1 (R:R ${signals.rrRatio1})</span>
                         <span class="stat-value positive">$${signals.tp1}</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">Target 2 (1:3)</span>
+                        <span class="stat-label">Target 2 (R:R ${signals.rrRatio2})</span>
                         <span class="stat-value positive">$${signals.tp2}</span>
                     </div>
                     <div class="stat-item">
@@ -3438,13 +3548,55 @@ function updateAISignals(ticker, candles) {
                     </div>
                 </div>
 
-                <div class="strategy-analysis">
-                    <strong><i class="fa-solid fa-circle-info"></i> Analysis:</strong><br>
-                    PIP trend is ${trend.status.toLowerCase()}. 
-                    ${trend.status === 'BULLISH' ? 'Strong higher-peaks/higher-troughs structure detected.' : ''}
+                <!-- Upgraded Trade Playbook Timeline -->
+                <div class="playbook-container">
+                    <h4 class="playbook-title">
+                        <i class="fa-solid fa-compass-drafting"></i> 戰術交易劇本 (Tactical Trade Playbook)
+                    </h4>
+                    <div class="rr-timeline-container">
+                        <div class="rr-timeline">
+                            <div class="rr-timeline-progress" style="width: ${cpPct}%"></div>
+                            
+                            <!-- Stop Loss Node -->
+                            <div class="rr-node" style="left: 0%;">
+                                <div class="rr-node-dot sl"></div>
+                                <span class="rr-node-label">停損 SL</span>
+                                <span class="rr-node-price">$${signals.stopLoss}</span>
+                            </div>
+                            
+                            <!-- Current Price Node -->
+                            <div class="rr-node" style="left: ${cpPct}%;">
+                                <div class="rr-node-dot cp" title="Current Price"></div>
+                                <span class="rr-node-label cp">現價</span>
+                                <span class="rr-node-price cp">$${signals.currentPrice}</span>
+                            </div>
+                            
+                            <!-- Target 1 Node -->
+                            <div class="rr-node" style="left: ${tp1Pct}%;">
+                                <div class="rr-node-dot tp1"></div>
+                                <span class="rr-node-label">目標 1</span>
+                                <span class="rr-node-price">$${signals.tp1}</span>
+                            </div>
+                            
+                            <!-- Target 2 Node -->
+                            <div class="rr-node" style="left: 100%;">
+                                <div class="rr-node-dot tp2"></div>
+                                <span class="rr-node-label">目標 2</span>
+                                <span class="rr-node-price">$${signals.tp2}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="strategy-analysis" style="margin-top: 16px;">
+                    <strong><i class="fa-solid fa-circle-info"></i> Trend Analysis:</strong><br>
+                    PIP trend structure is currently ${trend.status.toLowerCase()}. 
+                    ${trend.status === 'BULLISH' ? 'Strong higher-peaks and higher-troughs structure detected.' : ''}
                     ${trend.status === 'CONSOLIDATION' ? 'Price is oscillating within a tight range (neckline identification active).' : ''}
                     ${sig.signal === 'BUY' ? `Signal triggered by ${sig.details.reason}. Target entries at current level.` : 'Waiting for optimal entry setup.'}
                 </div>
+                
+                ${portfolioHtml}
             </div>
         `;
 

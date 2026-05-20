@@ -27,7 +27,7 @@ const puppeteer = require('puppeteer');
     }
   });
 
-  await page.goto('http://localhost:5174');
+  await page.goto('http://localhost:5173');
   
   // Set up local storage to trigger the bug
   await page.evaluate(() => {

@@ -12,7 +12,7 @@ const puppeteer = require('puppeteer');
     }
   });
 
-  await page.goto('http://localhost:5174');
+  await page.goto('http://localhost:5173');
   
   // Search 2330
   await page.type('#stock-search', '2330');
