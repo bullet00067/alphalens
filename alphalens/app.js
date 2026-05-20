@@ -1223,47 +1223,60 @@ function calculateAISignals(ticker, candles) {
 
     const entryPrice = portfolioItem ? portfolioItem.cost : lastPrice;
     const qty = portfolioItem ? portfolioItem.qty : 0;
-    
-    // Stop Loss and Targets (Directional)
-    // When in portfolio, anchor SL/TP from entryPrice (均價) so numbers reflect actual holding risk
-    const anchorPrice = portfolioItem ? entryPrice : lastPrice;
-    let stopLoss;
-    let tp1, tp2;
+
+    // ── Trailing Stop & Targets ──────────────────────────────────────────────
+    // 移動停損 (Trailing Stop): 近期最高價往下 2×ATR% 自動追蹤
+    // 目標價 (TP): 以持倉均價為基準 +15% / +25% 固定目標
+    const recentHigh = Math.max(...recentCandles.map(c => c.high));
+    const trailingPct = (2 * atr) / recentHigh;  // ATR-based trailing %
+    const trailingStop = recentHigh * (1 - trailingPct);
+
     const isBearish = pipSignal.signal === 'SELL';
-    
-    if (isBearish) {
-        // For bearish, stop loss is above last peak or ATR (relative to anchorPrice)
-        const lastPeak = trend.peaks.length > 0 ? trend.peaks[trend.peaks.length-1].value : 0;
-        if (lastPeak > lastPrice) {
-            const peakDist = (lastPeak - lastPrice) / lastPrice;
-            const rawSL = (peakDist < 0.15) ? lastPeak : lastPrice + (2 * atr);
-            // Shift SL proportionally to anchor if in portfolio
-            stopLoss = portfolioItem ? anchorPrice + (rawSL - lastPrice) : rawSL;
-        } else {
-            stopLoss = anchorPrice + (2 * atr);
-        }
-        const riskPerShare = stopLoss - anchorPrice;
-        tp1 = anchorPrice - (2 * riskPerShare);
-        tp2 = anchorPrice - (3 * riskPerShare);
+
+    let stopLoss, tp1, tp2;
+
+    if (portfolioItem) {
+        // 持倉模式：移動停損 + 固定百分比目標
+        stopLoss = Math.max(trailingStop, entryPrice * (isBearish ? 1.05 : 0.88)); // 多單最低容忍 -12%
+        tp1 = isBearish ? entryPrice * 0.85 : entryPrice * 1.15;   // ±15%
+        tp2 = isBearish ? entryPrice * 0.75 : entryPrice * 1.25;   // ±25%
     } else {
-        // For bullish/neutral, stop loss is below last trough or ATR (relative to anchorPrice)
-        const lastTrough = trend.troughs.length > 0 ? trend.troughs[trend.troughs.length-1].value : 0;
-        if (lastTrough > 0 && lastTrough < lastPrice) {
-            const troughDist = (lastPrice - lastTrough) / lastPrice;
-            const rawSL = (troughDist < 0.15) ? lastTrough : lastPrice - (2 * atr);
-            // Shift SL proportionally to anchor if in portfolio
-            stopLoss = portfolioItem ? anchorPrice - (lastPrice - rawSL) : rawSL;
+        // 無持倉模式：純 ATR 計算（原本邏輯）
+        const anchorPrice = lastPrice;
+        if (isBearish) {
+            const lastPeak = trend.peaks.length > 0 ? trend.peaks[trend.peaks.length-1].value : 0;
+            if (lastPeak > lastPrice) {
+                const peakDist = (lastPeak - lastPrice) / lastPrice;
+                stopLoss = (peakDist < 0.15) ? lastPeak : lastPrice + (2 * atr);
+            } else {
+                stopLoss = lastPrice + (2 * atr);
+            }
+            const riskPerShare = stopLoss - anchorPrice;
+            tp1 = anchorPrice - (2 * riskPerShare);
+            tp2 = anchorPrice - (3 * riskPerShare);
         } else {
-            stopLoss = anchorPrice - (2 * atr);
+            const lastTrough = trend.troughs.length > 0 ? trend.troughs[trend.troughs.length-1].value : 0;
+            if (lastTrough > 0 && lastTrough < lastPrice) {
+                const troughDist = (lastPrice - lastTrough) / lastPrice;
+                stopLoss = (troughDist < 0.15) ? lastTrough : lastPrice - (2 * atr);
+            } else {
+                stopLoss = lastPrice - (2 * atr);
+            }
+            const riskPerShare = anchorPrice - stopLoss;
+            tp1 = anchorPrice + (2 * riskPerShare);
+            tp2 = anchorPrice + (3 * riskPerShare);
         }
-        const riskPerShare = anchorPrice - stopLoss;
-        tp1 = anchorPrice + (2 * riskPerShare);
-        tp2 = anchorPrice + (3 * riskPerShare);
     }
-    
+
+    // 移動停損目前是否已在獲利區（鎖利）
+    const isTrailingInProfit = portfolioItem && trailingStop > entryPrice;
+    const trailingLockedPnl = portfolioItem ? qty * (trailingStop - entryPrice) : 0;
+    const trailingPctDisplay = (trailingPct * 100).toFixed(1);
+    const recentHighDisplay = recentHigh.toFixed(2);
+
     // Evaluate Entry signals (Entry A and Entry B)
     const entrySignal = evaluateEntry(recentCandles, pips, trend);
-    
+
     // Evaluate Exit signals for portfolio positions
     let exitSignal = null;
     if (portfolioItem) {
@@ -1273,27 +1286,27 @@ function calculateAISignals(ticker, candles) {
         };
         exitSignal = evaluateExit(recentCandles, pips, pos);
     }
-    
-    // Calculate Risk/Reward Ratio based on active entry cost or current price
+
+    // R:R Ratio
     const risk = Math.abs(entryPrice - stopLoss);
     const reward1 = Math.abs(tp1 - entryPrice);
     const reward2 = Math.abs(tp2 - entryPrice);
     const rrRatio1 = risk > 0 ? (reward1 / risk).toFixed(1) : '2.0';
     const rrRatio2 = risk > 0 ? (reward2 / risk).toFixed(1) : '3.0';
 
-    // Projected P/L (Based on actual entry cost if in portfolio)
+    // Projected P/L
     const slImpact = qty * (stopLoss - entryPrice);
     const tp1Impact = qty * (tp1 - entryPrice);
     const tp2Impact = qty * (tp2 - entryPrice);
-    
+
     return {
         atr: atr.toFixed(2),
         stopLoss: stopLoss.toFixed(2),
         tp1: tp1.toFixed(2),
         tp2: tp2.toFixed(2),
-        slImpact: slImpact.toFixed(2),
-        tp1Impact: tp1Impact.toFixed(2),
-        tp2Impact: tp2Impact.toFixed(2),
+        slImpact: slImpact.toFixed(0),
+        tp1Impact: tp1Impact.toFixed(0),
+        tp2Impact: tp2Impact.toFixed(0),
         inPortfolio: !!portfolioItem,
         entryPrice: entryPrice.toFixed(2),
         currentPrice: lastPrice,
@@ -1302,7 +1315,13 @@ function calculateAISignals(ticker, candles) {
         rrRatio1: `1:${rrRatio1}`,
         rrRatio2: `1:${rrRatio2}`,
         entrySignal: entrySignal,
-        exitSignal: exitSignal
+        exitSignal: exitSignal,
+        // 移動停損附加資料
+        trailingStop: trailingStop.toFixed(2),
+        trailingPct: trailingPctDisplay,
+        recentHigh: recentHighDisplay,
+        isTrailingInProfit,
+        trailingLockedPnl: trailingLockedPnl.toFixed(0),
     };
 }
 
@@ -3515,18 +3534,66 @@ function updateAISignals(ticker, candles) {
         cpPct = Math.max(0, Math.min(100, cpPct));
         tp1Pct = Math.max(0, Math.min(100, tp1Pct));
 
-        // 5. Portfolio Context Info
+        // 5. Portfolio Context Info with Trailing Stop
         let portfolioHtml = '';
         if (signals.inPortfolio) {
             const isLoss = parseFloat(signals.slImpact) < 0;
             const isTp1Win = parseFloat(signals.tp1Impact) > 0;
+            const lockedPnl = parseFloat(signals.trailingLockedPnl);
+            const currPnl = signals.qty ? parseFloat(signals.currentPrice) - parseFloat(signals.entryPrice) : 0;
+
             portfolioHtml = `
-                <div class="strategy-analysis" style="margin-top: 16px; border: 1px dashed rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.03);">
-                    <strong style="color: var(--accent-primary);"><i class="fa-solid fa-briefcase"></i> 投資組合持倉分析 (Portfolio Exposure):</strong><br>
-                    您的持倉均價: <span style="font-weight: 700; color: #f8fafc;">${currencySymbol}${signals.entryPrice}</span> | 
-                    觸發停損預估損益: <span style="font-weight: 700; color: ${isLoss ? 'var(--negative)' : 'var(--positive)'};">${signals.slImpact >= 0 ? '+' : ''}${currencySymbol}${signals.slImpact}</span><br>
-                    達目標 1 預估損益: <span style="font-weight: 700; color: ${isTp1Win ? 'var(--positive)' : 'var(--negative)'};">${signals.tp1Impact >= 0 ? '+' : ''}${currencySymbol}${signals.tp1Impact}</span> | 
-                    達目標 2 預估損益: <span style="font-weight: 700; color: var(--positive);">+${currencySymbol}${signals.tp2Impact}</span>
+                <div class="strategy-analysis" style="margin-top: 16px; border: 1px dashed rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.03); padding: 14px 16px;">
+                    <strong style="color: var(--accent-primary); font-size: 13px;"><i class="fa-solid fa-briefcase"></i> 投資組合持倉分析</strong>
+
+                    <!-- Row 1: 均價 / 現價 / 損益 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px;">
+                        <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 10px;">
+                            <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">持倉均價</div>
+                            <div style="font-weight: 700; color: #f8fafc; font-size: 14px;">${currencySymbol}${signals.entryPrice}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 10px;">
+                            <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">現價</div>
+                            <div style="font-weight: 700; color: #f8fafc; font-size: 14px;">${currencySymbol}${parseFloat(signals.currentPrice).toFixed(2)}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 10px;">
+                            <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">近期最高</div>
+                            <div style="font-weight: 700; color: #f8fafc; font-size: 14px;">${currencySymbol}${signals.recentHigh}</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: 移動停損 -->
+                    <div style="margin-top: 10px; background: ${signals.isTrailingInProfit ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; border: 1px solid ${signals.isTrailingInProfit ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}; border-radius: 8px; padding: 10px 12px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                            <div>
+                                <div style="font-size: 10px; color: var(--text-muted);">🔄 移動停損 (Trailing Stop) — 追蹤幅度 ${signals.trailingPct}%</div>
+                                <div style="font-weight: 700; font-size: 16px; color: ${signals.isTrailingInProfit ? '#34d399' : '#f87171'}; margin-top: 2px;">${currencySymbol}${signals.trailingStop}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 10px; color: var(--text-muted);">${signals.isTrailingInProfit ? '✅ 鎖定獲利' : '⚠️ 尚未獲利'}</div>
+                                <div style="font-weight: 700; font-size: 14px; color: ${signals.isTrailingInProfit ? '#34d399' : '#f87171'}; margin-top: 2px;">${signals.isTrailingInProfit ? '+' : ''}${currencySymbol}${signals.trailingLockedPnl}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: SL / TP1 / TP2 損益 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px;">
+                        <div style="background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; padding: 8px 10px;">
+                            <div style="font-size: 10px; color: #f87171; margin-bottom: 2px;">停損觸發 (-12%)</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">${currencySymbol}${signals.stopLoss}</div>
+                            <div style="font-weight: 700; color: #f87171; font-size: 13px; margin-top: 2px;">${signals.slImpact >= 0 ? '+' : ''}${currencySymbol}${Number(signals.slImpact).toLocaleString()}</div>
+                        </div>
+                        <div style="background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.2); border-radius: 8px; padding: 8px 10px;">
+                            <div style="font-size: 10px; color: #34d399; margin-bottom: 2px;">目標 1 (+15%)</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">${currencySymbol}${signals.tp1}</div>
+                            <div style="font-weight: 700; color: #34d399; font-size: 13px; margin-top: 2px;">+${currencySymbol}${Number(signals.tp1Impact).toLocaleString()}</div>
+                        </div>
+                        <div style="background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.2); border-radius: 8px; padding: 8px 10px;">
+                            <div style="font-size: 10px; color: #22c55e; margin-bottom: 2px;">目標 2 (+25%)</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">${currencySymbol}${signals.tp2}</div>
+                            <div style="font-weight: 700; color: #22c55e; font-size: 13px; margin-top: 2px;">+${currencySymbol}${Number(signals.tp2Impact).toLocaleString()}</div>
+                        </div>
+                    </div>
                 </div>
             `;
         }
