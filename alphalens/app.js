@@ -3281,7 +3281,7 @@ function renderTacticalChart(candles) {
 
     pipChartInstance = createChart(chartDiv, {
         width: pipContainer.clientWidth || 800,
-        height: 180,
+        height: 250,
         layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
         grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
         timeScale: { 

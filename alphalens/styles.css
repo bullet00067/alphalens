@@ -780,7 +780,8 @@ tbody tr:hover {
     display: flex;
     flex-direction: column;
     padding: 16px !important;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     min-height: 0;
 }
 
@@ -835,10 +836,11 @@ tbody tr:hover {
 }
 
 .rsi-container { min-height: 120px; height: 120px; }
-.pip-container { min-height: 180px; height: 180px; }
+/* pip-container must accommodate pip-pattern-label (~80px) + pipChartCanvas (250px) */
+.pip-container { min-height: 360px; height: auto; }
 
 @media (max-width: 768px) {
-    .pip-container { min-height: 150px; height: 150px; }
+    .pip-container { min-height: 320px; height: auto; }
 }
 
 .sidebar-column {
