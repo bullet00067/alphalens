@@ -145,7 +145,7 @@ async function fetchWithProxy(url) {
     }
 }
 
-async function fetchYahooChart(ticker, interval = '1d', range = '2y') {
+async function fetchYahooChart(ticker, interval = '1d', range = '3y') {
     const cleanTicker = cleanTwTicker(ticker);
     let tickersToTry = [];
     if (ticker.endsWith('.TW')) {
@@ -183,8 +183,8 @@ async function fetchYahooChart(ticker, interval = '1d', range = '2y') {
 async function fetchYahooFallbackCandles(ticker, tf = '1day') {
     const cleanTicker = cleanTwTicker(ticker);
     
-    // Fetch 2 years of daily data ('1d') to ensure we have enough for timeframe aggregates
-    const { yTicker, result } = await fetchYahooChart(ticker, '1d', '2y');
+    // Fetch 3 years of daily data ('1d') to ensure we have enough for timeframe aggregates
+    const { yTicker, result } = await fetchYahooChart(ticker, '1d', '3y');
     
     const timestamps = result.timestamp;
     const quote = result.indicators.quote[0];
@@ -1803,7 +1803,7 @@ async function fetchTwseCandles(ticker, tf) {
         const twTicker = cleanTwTicker(ticker);
         const end = new Date();
         const start = new Date();
-        start.setFullYear(end.getFullYear() - 1);
+        start.setFullYear(end.getFullYear() - 3);
         
         const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`;
         const data = await fetchWithProxy(url);
@@ -2171,8 +2171,7 @@ function renderTradingViewChart(data) {
                         time: p.time,
                         position: isHigh ? 'aboveBar' : 'belowBar',
                         color: isHigh ? '#ef4444' : '#10b981',
-                        shape: isHigh ? 'arrowDown' : 'arrowUp',
-                        text: ""
+                        shape: isHigh ? 'arrowDown' : 'arrowUp'
                     };
                 });
                 mainPipMarkers = initialMarkers;
@@ -2192,14 +2191,20 @@ function renderTradingViewChart(data) {
 
     function clearAllLabels(series, markers) {
         if (!markers || markers.length === 0) return;
-        const cleaned = markers.map(m => ({ ...m, text: "" }));
+        const cleaned = markers.map(m => {
+            const { text, ...rest } = m;
+            return rest;
+        });
         createSeriesMarkers(series, cleaned);
     }
 
     currentStockChart.subscribeCrosshairMove((param) => {
         if (!param.time) {
             if (mainHoverState.time !== null) {
-                createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
+                createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => {
+                    const { text, ...rest } = m;
+                    return rest;
+                }));
                 mainHoverState.time = null;
             }
             return;
@@ -2211,16 +2216,23 @@ function renderTradingViewChart(data) {
                 const candle = data.find(d => d.time === param.time);
                 if (candle) {
                     const text = `P: $${candle.close.toFixed(2)} | V: ${formatCompactNumber(candle.volume || 0)}`;
-                    const updated = mainPipMarkers.map(m => ({
-                        ...m,
-                        text: m.time === param.time ? text : ""
-                    }));
+                    const updated = mainPipMarkers.map(m => {
+                        if (m.time === param.time) {
+                            return { ...m, text };
+                        } else {
+                            const { text, ...rest } = m;
+                            return rest;
+                        }
+                    });
                     createSeriesMarkers(candlestickSeries, updated);
                     mainHoverState.time = param.time;
                 }
             }
         } else if (mainHoverState.time !== null) {
-            createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => ({ ...m, text: "" })));
+            createSeriesMarkers(candlestickSeries, mainPipMarkers.map(m => {
+                const { text, ...rest } = m;
+                return rest;
+            }));
             mainHoverState.time = null;
         }
     });
@@ -2340,6 +2352,17 @@ function refreshPipAnalysis(logicalRange, allData) {
             tacticalStdDev = Math.sqrt(logVals.reduce((a, b) => a + Math.pow(b - tacticalStdMean, 2), 0) / logVals.length) || 1;
 
             if (pipLineSeries) pipLineSeries.setData(pips.map(p => ({ time: p.time, value: p.stdY })));
+            
+            // Recreate and sync tactical pip markers
+            tacticalPipMarkers = pips.map(p => ({
+                time: p.time,
+                position: 'inBar',
+                color: '#eab308',
+                shape: 'circle',
+                size: 0.1
+            }));
+            createSeriesMarkers(pipLineSeries, []);
+            createSeriesMarkers(pipLineSeries, tacticalPipMarkers);
             
             const signal = generatePIPSignal(visibleData, pips);
             const patternLabel = document.getElementById('pip-pattern-label');
@@ -3409,8 +3432,7 @@ function renderTacticalChart(candles) {
         position: 'inBar', // Tactical uses values on the line, not high/low
         color: '#eab308',
         shape: 'circle',
-        size: 0.1,
-        text: ""
+        size: 0.1
     }));
 
     pipLineSeries.setData(allPips.map(p => ({ time: p.time, value: p.stdY })));
@@ -3472,14 +3494,21 @@ function renderTacticalChart(candles) {
                     const d = window.tacticalStdDev || 1;
                     const priceVal = Math.pow(10, pip.stdY * d + m);
                     const text = `Val: $${priceVal.toFixed(2)}`;
-                    const updated = tacticalPipMarkers.map(m => ({
-                        ...m,
-                        text: m.time === param.time ? text : ""
-                    }));
+                    const updated = tacticalPipMarkers.map(m => {
+                        if (m.time === param.time) {
+                            return { ...m, text };
+                        } else {
+                            const { text, ...rest } = m;
+                            return rest;
+                        }
+                    });
                     createSeriesMarkers(pipLineSeries, updated);
                     tacticalHoverState.time = param.time;
                 } else if (!pip && tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
+                        const { text, ...rest } = m;
+                        return rest;
+                    }));
                     tacticalHoverState.time = null;
                 }
             }
@@ -3496,7 +3525,10 @@ function renderTacticalChart(candles) {
         if (pipChartContainer) {
             pipChartContainer.addEventListener('mouseleave', () => {
                 if (tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => ({ ...m, text: "" })));
+                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
+                        const { text, ...rest } = m;
+                        return rest;
+                    }));
                     tacticalHoverState.time = null;
                 }
             });
