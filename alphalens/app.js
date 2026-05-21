@@ -3265,7 +3265,7 @@ function renderTacticalChart(candles) {
     if (!chartDiv) {
         chartDiv = document.createElement('div');
         chartDiv.id = 'pipChartCanvas';
-        chartDiv.style.height = '250px';
+        chartDiv.style.height = '160px';
         pipContainer.appendChild(chartDiv);
     }
     
@@ -3281,7 +3281,7 @@ function renderTacticalChart(candles) {
 
     pipChartInstance = createChart(chartDiv, {
         width: pipContainer.clientWidth || 800,
-        height: 250,
+        height: 160,
         layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
         grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
         timeScale: { 
@@ -4220,6 +4220,7 @@ function switchSubchart(tabName) {
             };
 
             triggerRefresh(150);
+            triggerRefresh(500); // Second pass to ensure chart instance is fully bound and sync is active
         }
     }
 }

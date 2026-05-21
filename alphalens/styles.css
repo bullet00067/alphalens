@@ -776,14 +776,14 @@ tbody tr:hover {
 }
 
 .chart-container {
-    /* Mobile: let container grow naturally with content */
+    /* Mobile-first: height:auto so the container grows with its flex children */
+    /* (height:100% would collapse to 0 on mobile since parent has height:auto) */
     height: auto;
-    min-height: 420px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 16px !important;
-    overflow-y: auto;
-    overflow-x: hidden;
+    padding: 24px;
+    overflow: hidden;
 }
 
 .main-stock-chart {
@@ -800,9 +800,10 @@ tbody tr:hover {
 
 @media (min-width: 1024px) {
     .chart-container {
-        /* Desktop: fill full column height from the grid */
+        /* Desktop: fill the full grid column height (parent has explicit height: 100%) */
         height: 100%;
         min-height: 0;
+        overflow: hidden;
     }
     .main-stock-chart {
         height: auto;
@@ -842,11 +843,11 @@ tbody tr:hover {
 }
 
 .rsi-container { min-height: 120px; height: 120px; }
-/* pip-container must accommodate pip-pattern-label (~80px) + pipChartCanvas (250px) */
-.pip-container { min-height: 360px; height: auto; }
+/* pip-pattern-label ~80px + pipChartCanvas 160px + padding ~20px = ~260px */
+.pip-container { min-height: 260px; height: auto; overflow: hidden; }
 
 @media (max-width: 768px) {
-    .pip-container { min-height: 320px; height: auto; }
+    .pip-container { min-height: 240px; }
 }
 
 .sidebar-column {
