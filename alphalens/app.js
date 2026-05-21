@@ -1572,6 +1572,25 @@ async function fetchTwseFallbackCandles(ticker) {
     if (candles.length === 0) throw new Error("No valid data points found in TWSE response");
 
     const latest = candles[candles.length - 1];
+
+    // Fetch Taiwan stock outstanding shares for market cap
+    let marketCapitalization = null;
+    try {
+        const shStart = new Date();
+        shStart.setDate(shStart.getDate() - 30);
+        const shUrl = `${FINMIND_BASE}?dataset=TaiwanStockShareholding&data_id=${twTicker}&start_date=${formatDt(shStart)}`;
+        const shData = await fetchWithProxy(shUrl);
+        if (shData && shData.data && shData.data.length > 0) {
+            const validRecords = shData.data.filter(r => r.NumberOfSharesIssued > 0);
+            if (validRecords.length > 0) {
+                const latestSh = validRecords[validRecords.length - 1];
+                marketCapitalization = (latestSh.NumberOfSharesIssued * latest.close) / 1000000;
+            }
+        }
+    } catch (shErr) {
+        console.warn("Failed to fetch shareholding for fallback TW stock market cap:", shErr);
+    }
+
     return {
         quote: { 
             c: latest.close, 
@@ -1582,7 +1601,7 @@ async function fetchTwseFallbackCandles(ticker) {
             pc: candles[candles.length-2]?.close || latest.open 
         },
         candles: aggregateCandles(candles, tf),
-        profile: { name: title ? title.split(' ')[2] : ticker }
+        profile: { name: title ? title.split(' ')[2] : ticker, marketCapitalization }
     };
 }
 
@@ -1672,7 +1691,25 @@ async function fetchTwseCandles(ticker, tf) {
             pc: candles[candles.length-2]?.close || latest.open 
         };
 
-        return { quote, candles: aggregateCandles(candles, tf), profile: { name } };
+        // Fetch Taiwan stock outstanding shares for market cap
+        let marketCapitalization = null;
+        try {
+            const shStart = new Date();
+            shStart.setDate(shStart.getDate() - 30);
+            const shUrl = `${FINMIND_BASE}?dataset=TaiwanStockShareholding&data_id=${twTicker}&start_date=${formatDt(shStart)}`;
+            const shData = await fetchWithProxy(shUrl);
+            if (shData && shData.data && shData.data.length > 0) {
+                const validRecords = shData.data.filter(r => r.NumberOfSharesIssued > 0);
+                if (validRecords.length > 0) {
+                    const latestSh = validRecords[validRecords.length - 1];
+                    marketCapitalization = (latestSh.NumberOfSharesIssued * latest.close) / 1000000;
+                }
+            }
+        } catch (shErr) {
+            console.warn("Failed to fetch shareholding for TW stock market cap:", shErr);
+        }
+
+        return { quote, candles: aggregateCandles(candles, tf), profile: { name, marketCapitalization } };
     } catch (e) {
         console.error("FinMind Error, trying TWSE fallback:", e);
         return await fetchTwseFallbackCandles(ticker);
@@ -3809,26 +3846,26 @@ function updateAISignals(ticker, candles) {
             currentStopLossLine = candlestickSeries.createPriceLine({
                 price: parseFloat(signals.stopLoss),
                 color: '#EF4444',
-                lineWidth: 2,
-                lineStyle: 0,
+                lineWidth: 1,
+                lineStyle: 2,
                 axisLabelVisible: true,
-                title: 'STOP LOSS',
+                title: 'SL',
             });
             currentTp1Line = candlestickSeries.createPriceLine({
                 price: parseFloat(signals.tp1),
                 color: '#10B981',
-                lineWidth: 2,
-                lineStyle: 0,
+                lineWidth: 1,
+                lineStyle: 1,
                 axisLabelVisible: true,
-                title: 'TARGET 1',
+                title: 'Target 1',
             });
             currentTp2Line = candlestickSeries.createPriceLine({
                 price: parseFloat(signals.tp2),
                 color: '#10B981',
-                lineWidth: 2,
+                lineWidth: 1,
                 lineStyle: 1,
                 axisLabelVisible: true,
-                title: 'TARGET 2',
+                title: 'Target 2',
             });
         }
     }

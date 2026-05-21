@@ -223,55 +223,59 @@
             <!-- Stock Detail View (Hidden by default) -->
             <section id="stock-detail-view" class="view">
                 <div class="stock-header glass-panel">
-                    <div class="stock-title-info">
-                        <h1 id="detail-ticker">AAPL</h1>
-                        <span id="detail-name">Apple Inc.</span>
+                    <div class="stock-header-main">
+                        <div class="stock-title-info">
+                            <h1 id="detail-ticker">AAPL</h1>
+                            <span id="detail-name">Apple Inc.</span>
+                        </div>
+                        <div class="stock-actions">
+                            <button id="add-to-observation-btn" class="secondary-btn">
+                                <i class="fa-solid fa-eye"></i> <span>Add to Observation</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="stock-price-info">
+                    <div class="stock-price-block">
                         <h2 id="detail-price">$189.43</h2>
                         <span id="detail-change" class="positive">+1.24 (0.65%)</span>
-                    </div>
-                    <div class="stock-actions" style="margin-left: auto; display: flex; gap: 12px; align-items: center;">
-                        <button id="add-to-observation-btn" class="secondary-btn" style="padding: 8px 16px; font-size: 14px;">
-                            <i class="fa-solid fa-eye"></i> Add to Observation
-                        </button>
                     </div>
                 </div>
 
                 <div class="stock-detail-grid">
                     <div class="chart-container glass-panel" style="padding: 24px; display: flex; flex-direction: column;">
-                        <div style="display: flex; gap: 16px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;">
-                            <div id="timeframe-bar" class="control-group">
-                                <button class="tab-btn tf-btn" data-tf="15min">15m</button>
-                                <button class="tab-btn tf-btn" data-tf="1h">60m</button>
-                                <button class="tab-btn tf-btn active" data-tf="1day">Day</button>
-                                <button class="tab-btn tf-btn" data-tf="1week">Week</button>
-                                <button class="tab-btn tf-btn" data-tf="1month">Month</button>
-                                <button class="tab-btn tf-btn" data-tf="1year">Year</button>
-                            </div>
-                            <button class="indicator-btn active" id="axis-lock-btn" title="Lock/Unlock horizontal scrolling and zoom" style="height: 38px; display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-lock"></i> Auto-Fit & Lock</button>
-                            
-                            <div class="chart-toolbar" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1;">
-                                <div class="control-group">
-                                    <span style="font-size: 11px; color: var(--text-secondary); margin: 0 4px;">SMA</span>
-                                    <button class="indicator-btn" data-type="sma" data-period="5">5</button>
-                                    <button class="indicator-btn" data-type="sma" data-period="20">20</button>
-                                    <button class="indicator-btn" data-type="sma" data-period="60">60</button>
-                                    <button class="indicator-btn" data-type="sma" data-period="120">120</button>
+                        <div class="chart-toolbar-scroll">
+                            <div class="chart-toolbar-scroll-inner">
+                                <div id="timeframe-bar" class="control-group">
+                                    <button class="tab-btn tf-btn" data-tf="15min">15m</button>
+                                    <button class="tab-btn tf-btn" data-tf="1h">60m</button>
+                                    <button class="tab-btn tf-btn active" data-tf="1day">Day</button>
+                                    <button class="tab-btn tf-btn" data-tf="1week">Week</button>
+                                    <button class="tab-btn tf-btn" data-tf="1month">Month</button>
+                                    <button class="tab-btn tf-btn" data-tf="1year">Year</button>
                                 </div>
-                                <div class="control-group">
-                                    <span style="font-size: 11px; color: var(--text-secondary); margin: 0 4px;">EMA</span>
-                                    <button class="indicator-btn" data-type="ema" data-period="12">12</button>
-                                    <button class="indicator-btn" data-type="ema" data-period="26">26</button>
+                                <button class="indicator-btn active" id="axis-lock-btn" title="Lock/Unlock horizontal scrolling and zoom"><i class="fa-solid fa-lock"></i> Auto-Fit & Lock</button>
+                                
+                                <div class="chart-toolbar">
+                                    <div class="control-group">
+                                        <span class="toolbar-label">SMA</span>
+                                        <button class="indicator-btn" data-type="sma" data-period="5">5</button>
+                                        <button class="indicator-btn" data-type="sma" data-period="20">20</button>
+                                        <button class="indicator-btn" data-type="sma" data-period="60">60</button>
+                                        <button class="indicator-btn" data-type="sma" data-period="120">120</button>
+                                    </div>
+                                    <div class="control-group">
+                                        <span class="toolbar-label">EMA</span>
+                                        <button class="indicator-btn" data-type="ema" data-period="12">12</button>
+                                        <button class="indicator-btn" data-type="ema" data-period="26">26</button>
+                                    </div>
+                                    <div class="control-group">
+                                        <button class="indicator-btn" data-type="boll" data-period="20">BOLL</button>
+                                        <button class="indicator-btn" data-type="vol">VOL</button>
+                                        <button class="indicator-btn" data-type="rsi" data-period="14">RSI</button>
+                                        <button class="indicator-btn" data-type="pip-tactical"><i class="fa-solid fa-crosshairs"></i> TACTICAL</button>
+                                        <button class="indicator-btn" data-type="pip-overlay" id="pip-overlay-toggle" title="Overlay PIP on Main Chart"><i class="fa-solid fa-layer-group"></i> PIP Overlay</button>
+                                    </div>
+                                    <button class="ghost-btn-danger" id="clear-indicators-btn" aria-label="Clear all indicators">Clear All</button>
                                 </div>
-                                <div class="control-group">
-                                    <button class="indicator-btn" data-type="boll" data-period="20">BOLL</button>
-                                    <button class="indicator-btn" data-type="vol">VOL</button>
-                                    <button class="indicator-btn" data-type="rsi" data-period="14">RSI</button>
-                                    <button class="indicator-btn" data-type="pip-tactical"><i class="fa-solid fa-crosshairs"></i> TACTICAL</button>
-                                    <button class="indicator-btn" data-type="pip-overlay" id="pip-overlay-toggle" title="Overlay PIP on Main Chart"><i class="fa-solid fa-layer-group"></i> PIP Overlay</button>
-                                </div>
-                                <button class="ghost-btn-danger" id="clear-indicators-btn" style="margin-left: auto; font-size: 13px;" aria-label="Clear all indicators">Clear All</button>
                             </div>
                         </div>
                         <div id="stockChart" class="main-stock-chart">
