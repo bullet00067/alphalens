@@ -144,6 +144,129 @@ async function fetchWithProxy(url) {
         throw error;
     }
 }
+
+async function fetchYahooChart(ticker, interval = '1d', range = '2y') {
+    const cleanTicker = cleanTwTicker(ticker);
+    let tickersToTry = [];
+    if (ticker.endsWith('.TW')) {
+        tickersToTry = [ticker];
+    } else if (ticker.endsWith('.TWO')) {
+        tickersToTry = [ticker];
+    } else {
+        // Try both `.TW` and `.TWO` sequentially if no suffix is specified
+        tickersToTry = [`${cleanTicker}.TW`, `${cleanTicker}.TWO`];
+    }
+
+    for (const yTicker of tickersToTry) {
+        try {
+            console.log(`Trying Yahoo Finance endpoint for ${yTicker}...`);
+            const url = `/yahoo/${yTicker}?interval=${interval}&range=${range}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+                console.warn(`Yahoo endpoint returned status ${res.status} for ${yTicker}`);
+                continue;
+            }
+            const data = await res.json();
+            if (data.chart && data.chart.result && data.chart.result[0]) {
+                const result = data.chart.result[0];
+                if (result.timestamp && result.timestamp.length > 0) {
+                    return { yTicker, result };
+                }
+            }
+        } catch (err) {
+            console.warn(`Yahoo fetch failed for ${yTicker}:`, err);
+        }
+    }
+    throw new Error(`Yahoo Finance search failed for ticker ${ticker}`);
+}
+
+async function fetchYahooFallbackCandles(ticker, tf = '1day') {
+    const cleanTicker = cleanTwTicker(ticker);
+    
+    // Fetch 2 years of daily data ('1d') to ensure we have enough for timeframe aggregates
+    const { yTicker, result } = await fetchYahooChart(ticker, '1d', '2y');
+    
+    const timestamps = result.timestamp;
+    const quote = result.indicators.quote[0];
+    const meta = result.meta;
+    
+    if (!timestamps || timestamps.length === 0) {
+        throw new Error("Empty historical data from Yahoo Finance");
+    }
+    
+    const candles = [];
+    for (let i = 0; i < timestamps.length; i++) {
+        const timeVal = timestamps[i];
+        const date = new Date(timeVal * 1000);
+        const time = formatDt(date);
+        
+        const open = quote.open[i];
+        const high = quote.high[i];
+        const low = quote.low[i];
+        const close = quote.close[i];
+        const volume = quote.volume[i] || 0;
+        
+        if (open !== null && high !== null && low !== null && close !== null) {
+            candles.push({ time, open, high, low, close, volume });
+        }
+    }
+    
+    if (candles.length === 0) {
+        throw new Error("No valid data points found in Yahoo Finance response");
+    }
+    
+    const latest = candles[candles.length - 1];
+    const prevClose = candles[candles.length - 2]?.close || meta.chartPreviousClose || latest.open;
+    const diff = latest.close - prevClose;
+    const diffPercent = (diff / prevClose) * 100;
+    
+    const name = await getTaiwanStockName(cleanTicker) || cleanTicker;
+    
+    // Get market capitalization from FinMind shareholding if available
+    let marketCapitalization = null;
+    try {
+        const shStart = new Date();
+        shStart.setDate(shStart.getDate() - 30);
+        const shUrl = `${FINMIND_BASE}?dataset=TaiwanStockShareholding&data_id=${cleanTicker}&start_date=${formatDt(shStart)}`;
+        const shData = await fetchWithProxy(shUrl);
+        if (shData && shData.data && shData.data.length > 0) {
+            const validRecords = shData.data.filter(r => r.NumberOfSharesIssued > 0);
+            if (validRecords.length > 0) {
+                const latestSh = validRecords[validRecords.length - 1];
+                marketCapitalization = (latestSh.NumberOfSharesIssued * latest.close) / 1000000;
+            }
+        }
+    } catch (shErr) {
+        console.warn("Failed to fetch shareholding in Yahoo fallback:", shErr);
+    }
+    
+    // Estimate if still null
+    if (marketCapitalization === null) {
+        const commonShares = {
+            '2330': 25930000000,
+            '2317': 13860000000,
+            '8299': 207000000,
+            '2454': 1599000000
+        };
+        if (commonShares[cleanTicker]) {
+            marketCapitalization = (commonShares[cleanTicker] * latest.close) / 1000000;
+        }
+    }
+    
+    return {
+        quote: {
+            c: latest.close,
+            d: diff,
+            dp: diffPercent,
+            h: latest.high,
+            l: latest.low,
+            pc: prevClose
+        },
+        candles: aggregateCandles(candles, tf),
+        profile: { name, marketCapitalization }
+    };
+}
+
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const TWELVEDATA_BASE = 'https://api.twelvedata.com';
 
@@ -385,23 +508,37 @@ function cleanTwTicker(ticker) {
 
 async function getQuickQuote(ticker) {
     if (isTaiwanStock(ticker)) {
+        const cleanTicker = cleanTwTicker(ticker);
+        
+        // 1. Try FinMind
         try {
-            const cleanTicker = cleanTwTicker(ticker);
             const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${cleanTicker}&start_date=${new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0]}`;
             const data = await fetchWithProxy(url);
-            
-            if (data.data && data.data.length > 0) {
+            if (data && data.data && data.data.length > 0 && data.status !== 402) {
                 const latest = data.data[data.data.length - 1];
                 return { price: latest.close, change: latest.spread, d: (latest.spread / (latest.close - latest.spread)) * 100 };
             }
-            // If data is empty, try fallback
+        } catch (e) {
+            console.warn("FinMind failed in getQuickQuote:", e);
+        }
+        
+        // 2. Try Yahoo Finance
+        try {
+            const yahooData = await fetchYahooFallbackCandles(ticker, '1day');
+            return { price: yahooData.quote.c, change: yahooData.quote.d, d: yahooData.quote.dp };
+        } catch (yahooErr) {
+            console.warn("Yahoo failed in getQuickQuote:", yahooErr);
+        }
+        
+        // 3. Try TWSE API
+        try {
             const fallback = await fetchTwseFallbackCandles(ticker);
             return { price: fallback.quote.c, change: fallback.quote.d, d: fallback.quote.dp };
-        } catch (e) {
-            const fallback = await fetchTwseFallbackCandles(ticker).catch(() => null);
-            if (fallback) return { price: fallback.quote.c, change: fallback.quote.d, d: fallback.quote.dp };
-            return { price: 0, change: 0, d: 0, error: e.message };
+        } catch (twseErr) {
+            console.warn("TWSE failed in getQuickQuote:", twseErr);
         }
+        
+        return { price: 0, change: 0, d: 0, error: "All data sources failed" };
     } else {
         const res = await fetch(`${FINNHUB_BASE}/quote?symbol=${ticker}&token=${FINNHUB_API_KEY}`);
         if (!res.ok) return { price: 0, change: 0, d: 0, error: `HTTP ${res.status}` };
@@ -898,10 +1035,19 @@ function setMarketTab(tabName) {
     populateDashboard();
 }
 
-// Fetch Taiwan Stock Name
 async function getTaiwanStockName(ticker) {
     if (!isTaiwanStock(ticker)) return '';
     const cleanTicker = cleanTwTicker(ticker);
+    const hardcoded = {
+        '2330': '台積電',
+        '2317': '鴻海',
+        '8299': '群聯',
+        '2454': '聯發科',
+        '2603': '長榮',
+        '2609': '陽明',
+        '2615': '萬海'
+    };
+    if (hardcoded[cleanTicker]) return hardcoded[cleanTicker];
     if (twStockNames[cleanTicker]) return twStockNames[cleanTicker];
     try {
         const url = `${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${cleanTicker}`;
@@ -1423,21 +1569,14 @@ async function populateDashboard() {
                 const twName = await getTaiwanStockName(ticker);
                 if (twName) name = `${ticker} ${twName}`;
                 
-                // Fetch from FinMind
-                const twTicker = cleanTwTicker(ticker);
-                const today = new Date();
-                const pastMonth = new Date();
-                pastMonth.setDate(today.getDate() - 30);
-                
-                
-                const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(pastMonth)}`;
-                const data = await fetchWithProxy(url);
-                
-                if (data.data && data.data.length > 0) {
-                    const latest = data.data[data.data.length - 1];
-                    price = latest.close;
-                    isPositive = latest.spread >= 0;
-                    change = `${isPositive?'+':''}${latest.spread} (${(latest.spread / (latest.close - latest.spread) * 100).toFixed(2)}%)`;
+                const quoteInfo = await getQuickQuote(ticker);
+                if (quoteInfo && !quoteInfo.error && quoteInfo.price > 0) {
+                    price = quoteInfo.price;
+                    isPositive = quoteInfo.change >= 0;
+                    change = `${isPositive?'+':''}${quoteInfo.change.toFixed(2)} (${quoteInfo.d.toFixed(2)}%)`;
+                } else {
+                    price = 'Error';
+                    change = quoteInfo.error || 'Error';
                 }
             } else {
                 if (apiKey) {
@@ -1500,7 +1639,7 @@ function setupSearch() {
     });
 }
 
-async function fetchTwseFallbackCandles(ticker) {
+async function fetchTwseFallbackCandles(ticker, tf = '1day') {
     const twTicker = cleanTwTicker(ticker);
     const today = new Date();
     
@@ -1669,8 +1808,8 @@ async function fetchTwseCandles(ticker, tf) {
         const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`;
         const data = await fetchWithProxy(url);
         
-        if(!data.data || data.data.length === 0) {
-            return await fetchTwseFallbackCandles(ticker);
+        if(!data.data || data.data.length === 0 || data.status === 402) {
+            throw new Error("FinMind rate limited or empty data");
         }
         
         const candles = data.data.map(d => ({
@@ -1713,8 +1852,13 @@ async function fetchTwseCandles(ticker, tf) {
 
         return { quote, candles: aggregateCandles(candles, tf), profile: { name, marketCapitalization } };
     } catch (e) {
-        console.error("FinMind Error, trying TWSE fallback:", e);
-        return await fetchTwseFallbackCandles(ticker);
+        console.error("FinMind Error, trying Yahoo fallback first, then TWSE fallback:", e);
+        try {
+            return await fetchYahooFallbackCandles(ticker, tf);
+        } catch (yahooErr) {
+            console.error("Yahoo fallback failed too, trying TWSE fallback:", yahooErr);
+            return await fetchTwseFallbackCandles(ticker);
+        }
     }
 }
 

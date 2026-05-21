@@ -29,6 +29,18 @@ app.use('/finmind', createProxyMiddleware({
     }
 }));
 
+// 3. Proxy for Yahoo Finance
+app.use('/yahoo', createProxyMiddleware({
+    target: 'https://query2.finance.yahoo.com/v8/finance/chart',
+    changeOrigin: true,
+    pathRewrite: {
+        '^/yahoo': '',
+    },
+    onProxyRes: function (proxyRes, req, res) {
+        proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+    }
+}));
+
 // 3. Serve static files from the 'dist' directory
 app.use(express.static(path.join(__dirname, 'dist')));
 
