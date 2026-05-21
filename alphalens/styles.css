@@ -776,13 +776,14 @@ tbody tr:hover {
 }
 
 .chart-container {
-    height: 100%;
+    /* Mobile: let container grow naturally with content */
+    height: auto;
+    min-height: 420px;
     display: flex;
     flex-direction: column;
     padding: 16px !important;
     overflow-y: auto;
     overflow-x: hidden;
-    min-height: 0;
 }
 
 .main-stock-chart {
@@ -798,6 +799,11 @@ tbody tr:hover {
 }
 
 @media (min-width: 1024px) {
+    .chart-container {
+        /* Desktop: fill full column height from the grid */
+        height: 100%;
+        min-height: 0;
+    }
     .main-stock-chart {
         height: auto;
         min-height: 0;
