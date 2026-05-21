@@ -379,7 +379,8 @@ function resolveTicker(input) {
 }
 
 function cleanTwTicker(ticker) {
-    return ticker.replace('.TW', '').replace('.TWO', '');
+    if (!ticker) return '';
+    return ticker.replace(/\.(TW|TWO)$/i, '');
 }
 
 async function getQuickQuote(ticker) {
@@ -900,13 +901,14 @@ function setMarketTab(tabName) {
 // Fetch Taiwan Stock Name
 async function getTaiwanStockName(ticker) {
     if (!isTaiwanStock(ticker)) return '';
-    if (twStockNames[ticker]) return twStockNames[ticker];
+    const cleanTicker = cleanTwTicker(ticker);
+    if (twStockNames[cleanTicker]) return twStockNames[cleanTicker];
     try {
-        const url = `${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${ticker}`;
+        const url = `${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${cleanTicker}`;
         const data = await fetchWithProxy(url);
         if (data && data.data && data.data.length > 0) {
-            twStockNames[ticker] = data.data[0].stock_name;
-            return twStockNames[ticker];
+            twStockNames[cleanTicker] = data.data[0].stock_name;
+            return twStockNames[cleanTicker];
         }
     } catch (e) {
         console.error("Failed to fetch TW stock name:", e);
