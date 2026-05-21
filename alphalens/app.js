@@ -2548,7 +2548,7 @@ function toggleRSI(active, period = 14) {
     const rsiContainer = document.getElementById('rsiChart');
     if (!active) {
         if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
-        rsiContainer.style.display = 'none';
+        // Don't set display:none — the panel visibility is controlled by .chart-panel.active
         return;
     }
     
@@ -2558,7 +2558,8 @@ function toggleRSI(active, period = 14) {
     if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
     rsiContainer.innerHTML = '';
     
-    rsiContainer.style.display = 'block';
+    // Don't set display:block — the .chart-panel.active CSS controls visibility
+    // Let createChart use the container's actual rendered dimensions
     rsiChart = createChart(rsiContainer, {
         layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF', fontSize: 10 },
         grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
@@ -2640,51 +2641,16 @@ function initIndicators() {
 
 function togglePipTactical() {
     isPipTacticalEnabled = !isPipTacticalEnabled;
-    const btn = document.querySelector('[data-type="pip-tactical"]');
     const insightPanel = document.getElementById('tactical-insights-panel');
-    
+
     if (isPipTacticalEnabled) {
-        btn.classList.add('active');
         if (insightPanel) insightPanel.style.display = 'block';
-        const pipContainer = document.getElementById('pipChart');
-        if (pipContainer) pipContainer.style.display = 'block';
-        if (currentChartData) {
-            renderTacticalChart(currentChartData);
-            
-            // UI FIRST: Immediately show the panel and scanning status
-            const patternLabel = document.getElementById('pip-pattern-label');
-            if (patternLabel) {
-                patternLabel.style.display = 'block';
-                patternLabel.innerHTML = `<div style="opacity: 0.5; font-size: 12px; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i>
-                    INITIALIZING TACTICAL ANALYSIS...
-                </div>`;
-            }
-
-            // FORCE immediate analysis refresh with retries to handle async init
-            const triggerRefresh = (delay) => {
-                setTimeout(() => {
-                    const range = currentStockChart.timeScale().getVisibleLogicalRange();
-                    if (range) {
-                        refreshPipAnalysis(range, currentChartData);
-                    }
-                }, delay);
-            };
-
-            triggerRefresh(150);
-            triggerRefresh(500); // Second pass to ensure chart instance is bound
-        }
+        // In split-view mode: delegate everything to switchSubchart
+        switchSubchart('pip');
     } else {
-        btn.classList.remove('active');
         if (insightPanel) insightPanel.style.display = 'none';
-        const pipContainer = document.getElementById('pipChart');
-        if (pipContainer) pipContainer.style.display = 'none';
-        if (pipChartInstance) {
-            pipChartInstance.remove();
-            pipChartInstance = null;
-            pipLineSeries = null;
-            // ... clean other series references if needed
-        }
+        // Return to main K-line panel
+        switchSubchart('kline');
     }
 }
 
@@ -3269,7 +3235,7 @@ function renderTacticalChart(candles) {
         pipContainer.appendChild(chartDiv);
     }
     
-    pipContainer.style.display = 'block';
+    pipContainer.style.display = '';  // Don't override — CSS .chart-panel.active controls visibility
 
     if (pipChartInstance) {
         pipChartInstance.remove();
@@ -3279,9 +3245,11 @@ function renderTacticalChart(candles) {
         pipGhostSeries = null;
     }
 
+    // Use actual rendered container height (fills split-view panel), fallback to 220
+    const pipHeight = Math.max((chartDiv.closest('.chart-panel')?.clientHeight || 300) - 100, 160);
     pipChartInstance = createChart(chartDiv, {
         width: pipContainer.clientWidth || 800,
-        height: 160,
+        height: pipHeight,
         layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
         grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
         timeScale: { 
@@ -4142,63 +4110,72 @@ function initChartTabs() {
 }
 
 function switchSubchart(tabName) {
-    // 1. Manage tab active class
-    const tabs = document.querySelectorAll('.chart-tab-btn');
-    tabs.forEach(btn => {
-        if (btn.getAttribute('data-tab') === tabName) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
+    // 1. Update tab button active state
+    document.querySelectorAll('.chart-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === tabName);
     });
 
     const rsiBtn = document.querySelector('[data-type="rsi"]');
     const pipBtn = document.querySelector('[data-type="pip-tactical"]');
 
-    // 2. Hide/Show charts
+    // 2. Switch the visible panel (split-view: each panel is position:absolute, fills chart-view-area)
+    document.querySelectorAll('.chart-panel').forEach(panel => panel.classList.remove('active'));
+    const targetPanel = document.getElementById(`panel-${tabName}`);
+    if (targetPanel) targetPanel.classList.add('active');
+
+    // 3. Handle per-panel logic
     if (tabName === 'kline') {
+        // Turn off RSI
         toggleRSI(false);
         if (rsiBtn) rsiBtn.classList.remove('active');
-        
+        // Turn off PIP
         isPipTacticalEnabled = false;
         if (pipBtn) pipBtn.classList.remove('active');
         const insightPanel = document.getElementById('tactical-insights-panel');
         if (insightPanel) insightPanel.style.display = 'none';
-        const pipContainer = document.getElementById('pipChart');
-        if (pipContainer) pipContainer.style.display = 'none';
         if (pipChartInstance) {
             try { pipChartInstance.remove(); } catch(e) {}
-            pipChartInstance = null;
-            pipLineSeries = null;
+            pipChartInstance = null; pipLineSeries = null;
         }
-    } else if (tabName === 'rsi') {
-        isPipTacticalEnabled = false;
-        if (pipBtn) pipBtn.classList.remove('active');
-        const insightPanel = document.getElementById('tactical-insights-panel');
-        if (insightPanel) insightPanel.style.display = 'none';
-        const pipContainer = document.getElementById('pipChart');
-        if (pipContainer) pipContainer.style.display = 'none';
-        if (pipChartInstance) {
-            try { pipChartInstance.remove(); } catch(e) {}
-            pipChartInstance = null;
-            pipLineSeries = null;
+        // Trigger main chart resize so it fills the newly-visible panel
+        if (currentStockChart) {
+            setTimeout(() => {
+                const el = document.getElementById('stockChart');
+                if (el) currentStockChart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+                currentStockChart.timeScale().fitContent();
+            }, 50);
         }
 
+    } else if (tabName === 'rsi') {
+        // Turn off PIP
+        isPipTacticalEnabled = false;
+        if (pipBtn) pipBtn.classList.remove('active');
+        const insightPanel = document.getElementById('tactical-insights-panel');
+        if (insightPanel) insightPanel.style.display = 'none';
+        if (pipChartInstance) {
+            try { pipChartInstance.remove(); } catch(e) {}
+            pipChartInstance = null; pipLineSeries = null;
+        }
+        // Enable RSI
         toggleRSI(true);
         if (rsiBtn) rsiBtn.classList.add('active');
+        // Trigger RSI chart resize after panel becomes visible
+        setTimeout(() => {
+            if (currentStockChart) currentStockChart.timeScale().fitContent();
+        }, 80);
+
     } else if (tabName === 'pip') {
+        // Turn off RSI
         toggleRSI(false);
         if (rsiBtn) rsiBtn.classList.remove('active');
-
+        // Enable PIP
         isPipTacticalEnabled = true;
         if (pipBtn) pipBtn.classList.add('active');
         const insightPanel = document.getElementById('tactical-insights-panel');
         if (insightPanel) insightPanel.style.display = 'block';
-        const pipContainer = document.getElementById('pipChart');
-        if (pipContainer) pipContainer.style.display = 'block';
+
         if (currentChartData) {
             renderTacticalChart(currentChartData);
-            
             const patternLabel = document.getElementById('pip-pattern-label');
             if (patternLabel) {
                 patternLabel.style.display = 'block';
@@ -4207,20 +4184,16 @@ function switchSubchart(tabName) {
                     INITIALIZING TACTICAL ANALYSIS...
                 </div>`;
             }
-
             const triggerRefresh = (delay) => {
                 setTimeout(() => {
                     if (currentStockChart) {
                         const range = currentStockChart.timeScale().getVisibleLogicalRange();
-                        if (range) {
-                            refreshPipAnalysis(range, currentChartData);
-                        }
+                        if (range) refreshPipAnalysis(range, currentChartData);
                     }
                 }, delay);
             };
-
             triggerRefresh(150);
-            triggerRefresh(500); // Second pass to ensure chart instance is fully bound and sync is active
+            triggerRefresh(500);
         }
     }
 }

@@ -278,19 +278,32 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="stockChart" class="main-stock-chart">
-                            <div id="chart-tooltip" class="chart-tooltip">
-                                <!-- Tooltip content populated by JS -->
+                        <!-- Shared chart viewport: all panels are absolute-positioned inside here -->
+                        <div class="chart-view-area">
+                            <!-- Panel A: K-Line (default active) -->
+                            <div class="chart-panel active" id="panel-kline">
+                                <div id="stockChart" class="main-stock-chart">
+                                    <div id="chart-tooltip" class="chart-tooltip">
+                                        <!-- Tooltip content populated by JS -->
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Panel B: RSI -->
+                            <div class="chart-panel" id="panel-rsi">
+                                <div id="rsiChart" class="indicator-chart-container rsi-container active"></div>
+                            </div>
+                            <!-- Panel C: PIP Tactical -->
+                            <div class="chart-panel" id="panel-pip">
+                                <div id="pipChart" class="indicator-chart-container pip-container active">
+                                    <div id="pip-pattern-label" class="pip-pattern-tag"></div>
+                                </div>
                             </div>
                         </div>
+                        <!-- Tab switcher sits below the shared chart area -->
                         <div class="chart-tabs-control" id="chart-sub-tabs">
                             <button class="chart-tab-btn active" data-tab="kline"><i class="fa-solid fa-chart-line"></i> K-Line</button>
                             <button class="chart-tab-btn" data-tab="pip"><i class="fa-solid fa-crosshairs"></i> PIP Pattern</button>
                             <button class="chart-tab-btn" data-tab="rsi"><i class="fa-solid fa-bolt"></i> RSI</button>
-                        </div>
-                        <div id="rsiChart" class="indicator-chart-container rsi-container"></div>
-                        <div id="pipChart" class="indicator-chart-container pip-container">
-                            <div id="pip-pattern-label" class="pip-pattern-tag"></div>
                         </div>
                     </div>
                     

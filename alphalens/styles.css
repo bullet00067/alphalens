@@ -775,40 +775,84 @@ tbody tr:hover {
     }
 }
 
+/* =============================================
+   CHART LAYOUT — Split-View Architecture
+   (TradingView / Bloomberg pattern)
+   
+   chart-container (flex column, fills grid cell)
+   ├── .chart-toolbar-scroll  (shrinks to content)
+   ├── .chart-view-area       (fills remaining space — THE KEY)
+   │   ├── #stockChart        (panel A: K-Line, always rendered)
+   │   ├── #rsiChart          (panel B: RSI, display toggled)
+   │   └── #pipChart          (panel C: PIP Tactical, display toggled)
+   └── .chart-tabs-control    (shrinks to content)
+   
+   Each panel fills 100% of .chart-view-area via position:absolute.
+   Switching tabs = display:none ↔ display:block. No height fights.
+   ============================================= */
+
 .chart-container {
-    /* Mobile-first: height:auto so the container grows with its flex children */
-    /* (height:100% would collapse to 0 on mobile since parent has height:auto) */
+    /* Mobile: grows with children */
     height: auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 24px;
+    padding: 16px;
     overflow: hidden;
+    gap: 8px;
 }
 
+/* The shared area that all chart panels live inside */
+.chart-view-area {
+    position: relative;
+    width: 100%;
+    /* Mobile: fixed height so chart is always visible */
+    height: 55vw;
+    min-height: 300px;
+    max-height: 500px;
+    flex-shrink: 0;
+}
+
+/* Every panel fills the entire chart-view-area */
+.chart-panel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: none;   /* hidden by default, JS sets display:block for active panel */
+}
+
+.chart-panel.active {
+    display: block;
+}
+
+/* The K-Line (main) chart fills its panel */
 .main-stock-chart {
     position: relative;
     width: 100%;
-    height: 45vh;
-    min-height: 320px;
+    height: 100%;
+    min-height: 0;
     background: rgba(0,0,0,0.2);
     border-radius: 12px;
     padding: 4px;
     border: 1px solid var(--border-glass);
-    transition: all 0.3s ease;
 }
 
+/* Desktop overrides */
 @media (min-width: 1024px) {
     .chart-container {
-        /* Desktop: fill the full grid column height (parent has explicit height: 100%) */
         height: 100%;
         min-height: 0;
         overflow: hidden;
+        padding: 16px;
     }
-    .main-stock-chart {
-        height: auto;
-        min-height: 0;
+
+    .chart-view-area {
+        /* Fill all remaining space between toolbar and tab bar */
         flex: 1;
+        min-height: 0;
+        height: auto;      /* override the mobile fixed height */
+        max-height: none;
     }
 }
 
@@ -832,22 +876,36 @@ tbody tr:hover {
 
 .indicator-chart-container {
     width: 100%;
+    height: 100%;      /* fill the chart-panel which fills chart-view-area */
     display: none;
-    margin-top: 8px;
-    border-top: 1px solid var(--border-glass);
-    padding-top: 8px;
     position: relative;
     border-radius: 8px;
     background: rgba(0,0,0,0.1);
-    flex-shrink: 0;
+    overflow: hidden;
 }
 
-.rsi-container { min-height: 120px; height: 120px; }
-/* pip-pattern-label ~80px + pipChartCanvas 160px + padding ~20px = ~260px */
-.pip-container { min-height: 260px; height: auto; overflow: hidden; }
+.indicator-chart-container.active {
+    display: flex;
+    flex-direction: column;
+}
 
-@media (max-width: 768px) {
-    .pip-container { min-height: 240px; }
+/* RSI panel: just the chart canvas, no label */
+.rsi-container { }
+
+/* PIP panel: pattern label on top, chart canvas fills rest */
+.pip-container {
+    gap: 8px;
+}
+
+.pip-container #pip-pattern-label {
+    flex-shrink: 0;
+    min-height: 60px;
+}
+
+#pipChartCanvas {
+    flex: 1;
+    min-height: 0;
+    height: 100% !important; /* override inline style set by JS */
 }
 
 .sidebar-column {
