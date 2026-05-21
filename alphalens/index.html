@@ -249,6 +249,7 @@
                                 <button class="tab-btn tf-btn" data-tf="1month">Month</button>
                                 <button class="tab-btn tf-btn" data-tf="1year">Year</button>
                             </div>
+                            <button class="indicator-btn active" id="axis-lock-btn" title="Lock/Unlock horizontal scrolling and zoom" style="height: 38px; display: flex; align-items: center; gap: 6px;"><i class="fa-solid fa-lock"></i> Auto-Fit & Lock</button>
                             
                             <div class="chart-toolbar" style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; flex: 1;">
                                 <div class="control-group">
@@ -278,20 +279,25 @@
                                 <!-- Tooltip content populated by JS -->
                             </div>
                         </div>
+                        <div class="chart-tabs-control" id="chart-sub-tabs">
+                            <button class="chart-tab-btn active" data-tab="kline"><i class="fa-solid fa-chart-line"></i> K-Line</button>
+                            <button class="chart-tab-btn" data-tab="pip"><i class="fa-solid fa-crosshairs"></i> PIP Pattern</button>
+                            <button class="chart-tab-btn" data-tab="rsi"><i class="fa-solid fa-bolt"></i> RSI</button>
+                        </div>
                         <div id="rsiChart" class="indicator-chart-container rsi-container"></div>
                         <div id="pipChart" class="indicator-chart-container pip-container">
                             <div id="pip-pattern-label" class="pip-pattern-tag"></div>
                         </div>
                     </div>
                     
-                    <div class="sidebar-column" style="display: flex; flex-direction: column; gap: 24px;">
+                    <div class="sidebar-column" style="display: flex; flex-direction: column; gap: 16px;">
+                        <div id="ai-signal-card" style="display: none;">
+                            <!-- AI Trade Signals will appear here -->
+                        </div>
                         <div class="stats-container glass-panel">
                             <h3 style="margin-bottom: 16px; font-size: 16px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px;">Key Statistics</h3>
                             <div class="stats-grid" id="stats-grid">
                                 <!-- Populated by JS -->
-                            </div>
-                            <div id="ai-signal-card" style="display: none; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-glass);">
-                                <!-- AI Trade Signals will appear here -->
                             </div>
                         </div>
 

@@ -651,11 +651,30 @@ tbody tr:hover {
 .negative { color: var(--negative); }
 
 /* Stock Detail View */
+#stock-detail-view {
+    display: none;
+    height: calc(100vh - 80px);
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0 24px 16px 24px;
+    box-sizing: border-box;
+}
+
+#stock-detail-view.active-view {
+    display: flex;
+}
+
+.main-content:has(#stock-detail-view.active-view) {
+    overflow: hidden;
+}
+
 .stock-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
+    margin-bottom: 12px;
+    padding: 12px 20px;
+    flex-shrink: 0;
 }
 
 .stock-title-info h1 { font-size: 32px; }
@@ -668,20 +687,34 @@ tbody tr:hover {
 .stock-detail-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 24px;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
 }
 
 @media (min-width: 1024px) {
     .stock-detail-grid {
-        grid-template-columns: 3fr 1fr;
-        align-items: start;
+        grid-template-columns: 72% 28%;
+        height: 100%;
+        align-items: stretch;
     }
+}
+
+.chart-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 16px !important;
+    overflow: hidden;
+    min-height: 0;
 }
 
 .main-stock-chart {
     position: relative;
     width: 100%;
-    min-height: 480px;
+    flex: 1;
+    min-height: 0;
     background: rgba(0,0,0,0.2);
     border-radius: 12px;
     padding: 4px;
@@ -691,7 +724,7 @@ tbody tr:hover {
 
 @media (max-width: 768px) {
     .main-stock-chart {
-        min-height: 320px;
+        min-height: 250px;
     }
 }
 
@@ -722,13 +755,38 @@ tbody tr:hover {
     position: relative;
     border-radius: 8px;
     background: rgba(0,0,0,0.1);
+    flex-shrink: 0;
 }
 
-.rsi-container { min-height: 120px; }
-.pip-container { min-height: 180px; }
+.rsi-container { min-height: 120px; height: 120px; }
+.pip-container { min-height: 180px; height: 180px; }
 
 @media (max-width: 768px) {
-    .pip-container { min-height: 150px; }
+    .pip-container { min-height: 150px; height: 150px; }
+}
+
+.sidebar-column {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+    overflow-y: auto;
+    padding-right: 6px;
+    box-sizing: border-box;
+}
+
+.sidebar-column::-webkit-scrollbar {
+    width: 6px;
+}
+.sidebar-column::-webkit-scrollbar-track {
+    background: transparent;
+}
+.sidebar-column::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+}
+.sidebar-column::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 .pip-pattern-tag {
@@ -1472,7 +1530,7 @@ tbody tr:hover {
 /* Strategy Card & AI Signals */
 .strategy-card {
     padding: 20px;
-    margin-top: 24px;
+    margin-top: 0px;
     border-radius: 16px;
     background: linear-gradient(145deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
@@ -1678,7 +1736,11 @@ tbody tr:hover {
 .rr-timeline {
     position: relative;
     height: 6px;
-    background: rgba(255, 255, 255, 0.1);
+    background: linear-gradient(90deg, 
+        rgba(239, 68, 68, 0.25) 0%, 
+        rgba(239, 68, 68, 0.25) 15%, 
+        rgba(255, 255, 255, 0.1) 15%, 
+        rgba(255, 255, 255, 0.1) 100%);
     border-radius: 3px;
     display: flex;
     align-items: center;
@@ -1689,7 +1751,18 @@ tbody tr:hover {
     height: 100%;
     background: linear-gradient(90deg, #ef4444 0%, #3b82f6 50%, #22c55e 100%);
     border-radius: 3px;
-    opacity: 0.15;
+    opacity: 0.18;
+}
+
+.rr-timeline-progress.breached {
+    background: #ef4444 !important;
+    opacity: 0.45;
+    animation: flashRed 1.5s infinite alternate;
+}
+
+@keyframes flashRed {
+    0% { opacity: 0.25; box-shadow: 0 0 4px rgba(239, 68, 68, 0.25); }
+    100% { opacity: 0.55; box-shadow: 0 0 12px rgba(239, 68, 68, 0.6); }
 }
 
 .rr-node {
@@ -1722,6 +1795,28 @@ tbody tr:hover {
     border: 2px solid #f8fafc;
     box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
     z-index: 2;
+}
+
+.rr-node-dot.cp.breached {
+    background: #ef4444 !important;
+    border-color: #f8fafc;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.9);
+    animation: flashRedDot 1s infinite alternate;
+}
+
+@keyframes flashRedDot {
+    0% { transform: scale(1); box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+    100% { transform: scale(1.25); box-shadow: 0 0 20px rgba(239, 68, 68, 1); }
+}
+
+.rr-node-label.cp.breached {
+    color: #ef4444 !important;
+    font-weight: 700;
+}
+
+.rr-node-price.cp.breached {
+    color: #ef4444 !important;
+    font-weight: 700;
 }
 
 .rr-node-dot.tp1 {
@@ -1793,6 +1888,42 @@ tbody tr:hover {
     color: #f87171;
 }
 
+.alert-banner.profit-lock {
+    background: rgba(245, 158, 11, 0.08) !important;
+    border: 1px solid rgba(245, 158, 11, 0.3) !important;
+    color: #fbbf24 !important;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.12);
+    animation: pulseGoldBanner 2.5s infinite ease-in-out;
+}
+
+.alert-banner.profit-lock i {
+    color: #fbbf24 !important;
+}
+
+.alert-banner.discipline-sl {
+    background: rgba(239, 68, 68, 0.1) !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    color: #f87171 !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.12);
+    animation: pulseRedBanner 2s infinite ease-in-out;
+}
+
+.alert-banner.discipline-sl i {
+    color: #f87171 !important;
+}
+
+@keyframes pulseGoldBanner {
+    0% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.1); }
+    50% { box-shadow: 0 0 16px rgba(245, 158, 11, 0.4); }
+    100% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.1); }
+}
+
+@keyframes pulseRedBanner {
+    0% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.1); }
+    50% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.4); }
+    100% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.1); }
+}
+
 @keyframes pulseGlow {
     0% {
         box-shadow: 0 0 4px rgba(255, 255, 255, 0);
@@ -1803,4 +1934,43 @@ tbody tr:hover {
     100% {
         box-shadow: 0 0 4px rgba(255, 255, 255, 0);
     }
+}
+
+/* Subchart Tab bar styled like a TradingView segment bar */
+.chart-tabs-control {
+    display: flex;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    padding: 4px;
+    margin-top: 10px;
+    width: fit-content;
+    gap: 4px;
+    align-self: center;
+}
+
+.chart-tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chart-tab-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.chart-tab-btn.active {
+    background: var(--accent-primary);
+    color: #ffffff;
+    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
 }

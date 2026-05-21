@@ -43,6 +43,7 @@ let pipSeries = null;
 let smaSeriesList = [];
 let currentChartData = []; // Store OHLC data for indicator calculation
 let currentTimeframe = '1day';
+let isAxisLocked = true;
 let currentTicker = null;
 let currentPortfolio = []; // Will be loaded from Firebase
 let currentMarketTab = 'ALL'; // 'ALL', 'US', 'TW'
@@ -173,6 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(initTimeframeSwitcher, 'TimeframeSwitcher');
     safeInit(initPortfolio, 'Portfolio');
     safeInit(initResponsiveNavigation, 'ResponsiveNavigation');
+    safeInit(initAxisLock, 'AxisLock');
+    safeInit(initChartTabs, 'ChartTabs');
     
     const bannerBtn = document.getElementById('ask-ai-banner-btn');
     if (bannerBtn) {
@@ -1208,7 +1211,8 @@ function calcATR(candles, period = 14) {
 }
 
 function calculateAISignals(ticker, candles) {
-    const portfolioItem = currentPortfolio.find(p => p.ticker === ticker);
+    const portfolioList = (typeof window !== 'undefined' && window.currentPortfolio) ? window.currentPortfolio : currentPortfolio;
+    const portfolioItem = portfolioList.find(p => p.ticker === ticker);
     
     // Truncate context to last 200 candles for tactical signals to avoid historical bias
     const recentCandles = candles.length > 200 ? candles.slice(-200) : candles;
@@ -1299,6 +1303,14 @@ function calculateAISignals(ticker, candles) {
     const tp1Impact = qty * (tp1 - entryPrice);
     const tp2Impact = qty * (tp2 - entryPrice);
 
+    // Real-Time unearned P/L (即時損益)
+    const realtimePnl = portfolioItem ? qty * (lastPrice - entryPrice) : 0;
+    const realtimePnlPercent = portfolioItem ? ((lastPrice - entryPrice) / entryPrice) * 100 : 0;
+
+    // Expected Trailing stop P/L (移動鎖利預期損益)
+    const expectedPnl = portfolioItem ? qty * (stopLoss - entryPrice) : 0;
+    const expectedPnlPercent = portfolioItem ? ((stopLoss - entryPrice) / entryPrice) * 100 : 0;
+
     return {
         atr: atr.toFixed(2),
         stopLoss: stopLoss.toFixed(2),
@@ -1316,6 +1328,11 @@ function calculateAISignals(ticker, candles) {
         rrRatio2: `1:${rrRatio2}`,
         entrySignal: entrySignal,
         exitSignal: exitSignal,
+        qty: qty,
+        realtimePnl: realtimePnl.toFixed(0),
+        realtimePnlPercent: realtimePnlPercent.toFixed(2),
+        expectedPnl: expectedPnl.toFixed(0),
+        expectedPnlPercent: expectedPnlPercent.toFixed(2),
         // 移動停損附加資料
         trailingStop: trailingStop.toFixed(2),
         trailingPct: trailingPctDisplay,
@@ -1822,8 +1839,9 @@ async function loadChartData(ticker, tf) {
             pc: quote?.pc || lastCandle.open || 0
         };
 
+        const currencySymbol = getCurrencySymbol(ticker);
         document.getElementById('detail-name').textContent = profile?.name || ticker;
-        document.getElementById('detail-price').textContent = `$${safeQuote.c.toFixed(2)}`;
+        document.getElementById('detail-price').textContent = `${currencySymbol}${safeQuote.c.toFixed(2)}`;
         
         const isPositive = safeQuote.d >= 0;
         const changeText = `${isPositive ? '+' : ''}${safeQuote.d.toFixed(2)} (${safeQuote.dp.toFixed(2)}%)`;
@@ -1832,10 +1850,10 @@ async function loadChartData(ticker, tf) {
         changeEl.className = isPositive ? 'positive' : 'negative';
 
         document.getElementById('stats-grid').innerHTML = `
-            <div class="stat-item"><span class="stat-label">Market Cap</span><span class="stat-value">${profile?.marketCapitalization ? '$'+(profile.marketCapitalization/1000).toFixed(2)+'B' : 'N/A'}</span></div>
-            <div class="stat-item"><span class="stat-label">High (Day)</span><span class="stat-value">$${safeQuote.h.toFixed(2)}</span></div>
-            <div class="stat-item"><span class="stat-label">Low (Day)</span><span class="stat-value">$${safeQuote.l.toFixed(2)}</span></div>
-            <div class="stat-item"><span class="stat-label">Prev Close</span><span class="stat-value">$${safeQuote.pc.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Market Cap</span><span class="stat-value">${profile?.marketCapitalization ? currencySymbol+(profile.marketCapitalization/1000).toFixed(2)+'B' : 'N/A'}</span></div>
+            <div class="stat-item"><span class="stat-label">High (Day)</span><span class="stat-value">${currencySymbol}${safeQuote.h.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Low (Day)</span><span class="stat-value">${currencySymbol}${safeQuote.l.toFixed(2)}</span></div>
+            <div class="stat-item"><span class="stat-label">Prev Close</span><span class="stat-value">${currencySymbol}${safeQuote.pc.toFixed(2)}</span></div>
         `;
 
         document.getElementById('ai-quick-summary').innerHTML = `
@@ -1843,7 +1861,7 @@ async function loadChartData(ticker, tf) {
                 <span class="badge" style="background: ${isPositive ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'}; color: ${isPositive ? '#10B981' : '#EF4444'}; padding: 4px 8px;">
                     ${isPositive ? '📈' : '📉'} ${safeQuote.dp.toFixed(2)}%
                 </span>
-                <span>${profile?.name || ticker} is currently trading at <strong>$${safeQuote.c.toFixed(2)}</strong>.</span>
+                <span>${profile?.name || ticker} is currently trading at <strong>${currencySymbol}${safeQuote.c.toFixed(2)}</strong>.</span>
             </div>
         `;
         renderTradingViewChart(candles);
@@ -1915,6 +1933,9 @@ function renderTradingViewChart(data) {
         },
         timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
     });
+
+    applyAxisLockOptions();
+    observeChartResize(currentStockChart, chartContainer);
 
     mainPipMarkers = []; // Clear previous markers to prevent "ghost" tooltips
 
@@ -2033,7 +2054,9 @@ function renderTradingViewChart(data) {
 
     
     // Scale Optimization: Show exactly 60 candles by default regardless of timeframe
-    if (data.length > 60) {
+    if (isAxisLocked) {
+        currentStockChart.timeScale().fitContent();
+    } else if (data.length > 60) {
         currentStockChart.timeScale().setVisibleLogicalRange({
             from: data.length - 60,
             to: data.length - 1
@@ -2364,6 +2387,9 @@ function toggleRSI(active, period = 14) {
         timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, visible: false },
         crosshair: { mode: CrosshairMode.Normal },
     });
+
+    applyAxisLockOptions();
+    observeChartResize(rsiChart, rsiContainer);
     rsiSeries = rsiChart.addSeries(LineSeries, { color: '#A78BFA', lineWidth: 2, title: 'RSI 14' });
     rsiSeries.setData(calcRSI(currentChartData, period));
     // Sync time scales
@@ -2383,8 +2409,7 @@ function clearIndicators() {
     smaSeriesList = [];
     removeBollinger();
     toggleVolume(false);
-    toggleRSI(false);
-    document.querySelectorAll('.indicator-btn').forEach(btn => btn.classList.remove('active'));
+    switchSubchart('kline');
 }
 
 
@@ -2397,21 +2422,33 @@ function initIndicators() {
             const type = b.getAttribute('data-type');
             const period = parseInt(b.getAttribute('data-period'));
             const isActive = b.classList.contains('active');
-            b.classList.toggle('active');
 
             if (type === 'sma') {
+                b.classList.toggle('active');
                 if (isActive) { redrawActiveIndicators(); } else { addSMA(period); }
             } else if (type === 'ema') {
+                b.classList.toggle('active');
                 if (isActive) { redrawActiveIndicators(); } else { addEMA(period); }
             } else if (type === 'boll') {
+                b.classList.toggle('active');
                 if (isActive) removeBollinger(); else addBollinger(period);
             } else if (type === 'vol') {
+                b.classList.toggle('active');
                 toggleVolume(!isActive);
             } else if (type === 'rsi') {
-                toggleRSI(!isActive, period);
+                if (isActive) {
+                    switchSubchart('kline');
+                } else {
+                    switchSubchart('rsi');
+                }
             } else if (type === 'pip-tactical') {
-                togglePipTactical();
+                if (isActive) {
+                    switchSubchart('kline');
+                } else {
+                    switchSubchart('pip');
+                }
             } else if (type === 'pip-overlay') {
+                b.classList.toggle('active');
                 togglePipOverlay();
             }
         });
@@ -3082,6 +3119,9 @@ function renderTacticalChart(candles) {
         crosshair: { mode: CrosshairMode.Normal }
     });
 
+    applyAxisLockOptions();
+    observeChartResize(pipChartInstance, chartDiv);
+
     // --- CHART SYNC LOGIC ---
     try {
         if (currentStockChart) {
@@ -3476,7 +3516,9 @@ function updateAISignals(ticker, candles) {
         }
     }
 
-    const signals = calculateAISignals(ticker, candles);
+    const signals = (typeof window !== 'undefined' && window.calculateAISignals)
+        ? window.calculateAISignals(ticker, candles)
+        : calculateAISignals(ticker, candles);
     if (!signalCard) return;
 
     if (signals) {
@@ -3496,9 +3538,39 @@ function updateAISignals(ticker, candles) {
             rrBadge = `<span class="badge" style="background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.2);">一般 (Fair)</span>`;
         }
 
-        // 3. Setup Alert Banners
+        // 3. Setup Alert Banners (Advanced Stop Loss Warning System)
         let alertHtml = '';
-        if (signals.exitSignal) {
+        const slVal = parseFloat(signals.stopLoss);
+        const cpVal = parseFloat(signals.currentPrice);
+        const tp1Val = parseFloat(signals.tp1);
+        const tp2Val = parseFloat(signals.tp2);
+        
+        if (signals.inPortfolio && cpVal < slVal) {
+            const entryPriceVal = parseFloat(signals.entryPrice);
+            if (slVal <= entryPriceVal) {
+                // Scenario A: Discipline Stop Loss
+                alertHtml = `
+                    <div class="alert-banner discipline-sl" style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; animation: pulseRedBanner 2s infinite;">
+                        <i class="fa-solid fa-radiation fa-fade" style="color: #ef4444; font-size: 18px;"></i>
+                        <div style="display: flex; flex-direction: column; text-align: left;">
+                            <span style="color: #ef4444; font-weight: 700; font-size: 14px;">🚨 紀律停損已觸發 (Discipline Stop-Loss Triggered)</span>
+                            <span style="color: var(--text-secondary); font-size: 12px; margin-top: 2px; line-height: 1.5;">現價 ${currencySymbol}${cpVal.toFixed(2)} 已跌破停損價 ${currencySymbol}${slVal.toFixed(2)}。為了保護您的交易資本，強烈建議嚴格執行紀律停損出場！</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                // Scenario B: Trailing Profit Lock
+                alertHtml = `
+                    <div class="alert-banner profit-lock" style="background: rgba(245, 158, 11, 0.12); border: 1px solid #f59e0b; border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; animation: pulseGlow 2s infinite;">
+                        <i class="fa-solid fa-triangle-exclamation fa-fade" style="color: #f59e0b; font-size: 18px;"></i>
+                        <div style="display: flex; flex-direction: column; text-align: left;">
+                            <span style="color: #f59e0b; font-weight: 700; font-size: 14px;">⚠️ 移動鎖利已觸發 (Trailing Profit-Lock Triggered)</span>
+                            <span style="color: var(--text-secondary); font-size: 12px; margin-top: 2px; line-height: 1.5;">現價 ${currencySymbol}${cpVal.toFixed(2)} 已跌破移動停損價 ${currencySymbol}${slVal.toFixed(2)}，但高於持倉成本 ${currencySymbol}${entryPriceVal.toFixed(2)}。雖然目前仍處於獲利狀態，建議獲利了結以鎖定交易利潤！</span>
+                        </div>
+                    </div>
+                `;
+            }
+        } else if (signals.exitSignal) {
             alertHtml = `
                 <div class="alert-banner warning">
                     <i class="fa-solid fa-triangle-exclamation fa-fade"></i>
@@ -3515,38 +3587,56 @@ function updateAISignals(ticker, candles) {
         }
 
         // 4. Calculate Risk-Reward timeline positions
-        const slVal = parseFloat(signals.stopLoss);
-        const cpVal = parseFloat(signals.currentPrice);
-        const tp1Val = parseFloat(signals.tp1);
-        const tp2Val = parseFloat(signals.tp2);
-        
-        let cpPct, tp1Pct;
         const isBearish = sig.signal === 'SELL';
+        let cpPct, tp1Pct;
         if (isBearish) {
-            const range = slVal - tp2Val;
-            cpPct = range > 0 ? ((slVal - cpVal) / range) * 100 : 50;
-            tp1Pct = range > 0 ? ((slVal - tp1Val) / range) * 100 : 66.6;
+            if (cpVal <= slVal) {
+                const range = slVal - tp2Val;
+                const fraction = range > 0 ? (slVal - cpVal) / range : 0.5;
+                cpPct = 15 + Math.min(1, Math.max(0, fraction)) * 85;
+            } else {
+                const maxBreachRise = slVal * 0.05;
+                const breachAmount = cpVal - slVal;
+                const breachFraction = maxBreachRise > 0 ? Math.min(1, Math.max(0, breachAmount / maxBreachRise)) : 1;
+                cpPct = 15 - breachFraction * 15;
+            }
+            
+            const tp1Range = slVal - tp2Val;
+            const tp1Fraction = tp1Range > 0 ? (slVal - tp1Val) / tp1Range : 0.6;
+            tp1Pct = 15 + Math.min(1, Math.max(0, tp1Fraction)) * 85;
         } else {
-            const range = tp2Val - slVal;
-            cpPct = range > 0 ? ((cpVal - slVal) / range) * 100 : 50;
-            tp1Pct = range > 0 ? ((tp1Val - slVal) / range) * 100 : 66.6;
+            if (cpVal >= slVal) {
+                const range = tp2Val - slVal;
+                const fraction = range > 0 ? (cpVal - slVal) / range : 0.5;
+                cpPct = 15 + Math.min(1, Math.max(0, fraction)) * 85;
+            } else {
+                const maxBreachDrop = slVal * 0.05;
+                const breachAmount = slVal - cpVal;
+                const breachFraction = maxBreachDrop > 0 ? Math.min(1, Math.max(0, breachAmount / maxBreachDrop)) : 1;
+                cpPct = 15 - breachFraction * 15;
+            }
+            
+            const tp1Range = tp2Val - slVal;
+            const tp1Fraction = tp1Range > 0 ? (tp1Val - slVal) / tp1Range : 0.6;
+            tp1Pct = 15 + Math.min(1, Math.max(0, tp1Fraction)) * 85;
         }
-        cpPct = Math.max(0, Math.min(100, cpPct));
-        tp1Pct = Math.max(0, Math.min(100, tp1Pct));
 
         // 5. Portfolio Context Info with Trailing Stop
         let portfolioHtml = '';
         if (signals.inPortfolio) {
-            const isLoss = parseFloat(signals.slImpact) < 0;
-            const isTp1Win = parseFloat(signals.tp1Impact) > 0;
-            const lockedPnl = parseFloat(signals.trailingLockedPnl);
-            const currPnl = signals.qty ? parseFloat(signals.currentPrice) - parseFloat(signals.entryPrice) : 0;
+            const realtimePnlVal = parseFloat(signals.realtimePnl);
+            const realtimePnlPercentVal = parseFloat(signals.realtimePnlPercent);
+            const expectedPnlVal = parseFloat(signals.expectedPnl);
+            const expectedPnlPercentVal = parseFloat(signals.expectedPnlPercent);
+
+            const realtimeColor = realtimePnlVal >= 0 ? '#34d399' : '#f87171';
+            const expectedColor = expectedPnlVal >= 0 ? '#34d399' : '#f87171';
 
             portfolioHtml = `
                 <div class="strategy-analysis" style="margin-top: 16px; border: 1px dashed rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.03); padding: 14px 16px;">
                     <strong style="color: var(--accent-primary); font-size: 13px;"><i class="fa-solid fa-briefcase"></i> 投資組合持倉分析</strong>
 
-                    <!-- Row 1: 均價 / 現價 / 損益 -->
+                    <!-- Row 1: 均價 / 現價 / 近期最高 -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px;">
                         <div style="background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 10px;">
                             <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">持倉均價</div>
@@ -3562,10 +3652,38 @@ function updateAISignals(ticker, candles) {
                         </div>
                     </div>
 
-                    <!-- Row 2: 移動停損 -->
-                    <div style="margin-top: 10px; background: ${signals.isTrailingInProfit ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; border: 1px solid ${signals.isTrailingInProfit ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}; border-radius: 8px; padding: 10px 12px;">
+                    <!-- Row 2: 即時損益 vs 移動停損預期損益 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column;">
+                            <div style="font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #3b82f6;"></span>
+                                即時未實現損益
+                            </div>
+                            <div style="font-weight: 700; font-size: 15px; color: ${realtimeColor}; margin-top: 4px;">
+                                ${realtimePnlVal >= 0 ? '+' : ''}${currencySymbol}${realtimePnlVal.toLocaleString()}
+                            </div>
+                            <div style="font-size: 11px; color: ${realtimeColor}; margin-top: 2px; font-weight: 500;">
+                                ${realtimePnlPercentVal >= 0 ? '+' : ''}${realtimePnlPercentVal}%
+                            </div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column;">
+                            <div style="font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #eab308;"></span>
+                                移動停損預計損益
+                            </div>
+                            <div style="font-weight: 700; font-size: 15px; color: ${expectedColor}; margin-top: 4px;">
+                                ${expectedPnlVal >= 0 ? '+' : ''}${currencySymbol}${expectedPnlVal.toLocaleString()}
+                            </div>
+                            <div style="font-size: 11px; color: ${expectedColor}; margin-top: 2px; font-weight: 500;">
+                                ${expectedPnlPercentVal >= 0 ? '+' : ''}${expectedPnlPercentVal}%
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: 移動停損 -->
+                    <div style="margin-top: 12px; background: ${signals.isTrailingInProfit ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)'}; border: 1px solid ${signals.isTrailingInProfit ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}; border-radius: 8px; padding: 10px 12px;">
                         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-                            <div>
+                            <div style="text-align: left;">
                                 <div style="font-size: 10px; color: var(--text-muted);">🔄 移動停損 (Trailing Stop) — 追蹤幅度 ${signals.trailingPct}%</div>
                                 <div style="font-weight: 700; font-size: 16px; color: ${signals.isTrailingInProfit ? '#34d399' : '#f87171'}; margin-top: 2px;">${currencySymbol}${signals.trailingStop}</div>
                             </div>
@@ -3576,10 +3694,10 @@ function updateAISignals(ticker, candles) {
                         </div>
                     </div>
 
-                    <!-- Row 3: SL / TP1 / TP2 損益 -->
+                    <!-- Row 4: SL / TP1 / TP2 損益 -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px;">
                         <div style="background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; padding: 8px 10px;">
-                            <div style="font-size: 10px; color: #f87171; margin-bottom: 2px;">停損觸發 (-12%)</div>
+                            <div style="font-size: 10px; color: #f87171; margin-bottom: 2px;">停損觸發</div>
                             <div style="font-size: 11px; color: var(--text-muted);">${currencySymbol}${signals.stopLoss}</div>
                             <div style="font-weight: 700; color: #f87171; font-size: 13px; margin-top: 2px;">${signals.slImpact >= 0 ? '+' : ''}${currencySymbol}${Number(signals.slImpact).toLocaleString()}</div>
                         </div>
@@ -3597,6 +3715,10 @@ function updateAISignals(ticker, candles) {
                 </div>
             `;
         }
+
+        const isBreached = cpVal < slVal;
+        const progressLeft = isBreached ? cpPct : 15;
+        const progressWidth = isBreached ? (15 - cpPct) : (cpPct - 15);
 
         signalCard.innerHTML = `
             <div class="glass-panel strategy-card" style="border-left: 4px solid ${sig.color};">
@@ -3638,10 +3760,10 @@ function updateAISignals(ticker, candles) {
                     </h4>
                     <div class="rr-timeline-container">
                         <div class="rr-timeline">
-                            <div class="rr-timeline-progress" style="width: ${cpPct}%"></div>
+                            <div class="rr-timeline-progress ${isBreached ? 'breached' : ''}" style="left: ${progressLeft}%; width: ${progressWidth}%;"></div>
                             
                             <!-- Stop Loss Node -->
-                            <div class="rr-node" style="left: 0%;">
+                            <div class="rr-node" style="left: 15%;">
                                 <div class="rr-node-dot sl"></div>
                                 <span class="rr-node-label">停損 SL</span>
                                 <span class="rr-node-price">${currencySymbol}${signals.stopLoss}</span>
@@ -3649,9 +3771,9 @@ function updateAISignals(ticker, candles) {
                             
                             <!-- Current Price Node -->
                             <div class="rr-node" style="left: ${cpPct}%;">
-                                <div class="rr-node-dot cp" title="Current Price"></div>
-                                <span class="rr-node-label cp">現價</span>
-                                <span class="rr-node-price cp">${currencySymbol}${signals.currentPrice}</span>
+                                <div class="rr-node-dot cp ${isBreached ? 'breached' : ''}" title="Current Price"></div>
+                                <span class="rr-node-label cp ${isBreached ? 'breached' : ''}">現價</span>
+                                <span class="rr-node-price cp ${isBreached ? 'breached' : ''}">${currencySymbol}${signals.currentPrice}</span>
                             </div>
                             
                             <!-- Target 1 Node -->
@@ -3676,7 +3798,7 @@ function updateAISignals(ticker, candles) {
                     PIP trend structure is currently ${trend.status.toLowerCase()}. 
                     ${trend.status === 'BULLISH' ? 'Strong higher-peaks and higher-troughs structure detected.' : ''}
                     ${trend.status === 'CONSOLIDATION' ? 'Price is oscillating within a tight range (neckline identification active).' : ''}
-                    ${sig.signal === 'BUY' ? `Signal triggered by ${sig.details.reason}. Target entries at current level.` : 'Waiting for optimal entry setup.'}
+                    ${sig.signal === 'BUY' ? `Signal triggered by ${(sig.details && sig.details.reason) || 'pattern structure'}. Target entries at current level.` : 'Waiting for optimal entry setup.'}
                 </div>
                 
                 ${portfolioHtml}
@@ -3711,3 +3833,216 @@ function updateAISignals(ticker, candles) {
         }
     }
 }
+
+// ── NEW VIEWPORT & DASHBOARD INTEGRATION UTILITIES ────────────────────────
+
+function initAxisLock() {
+    const lockBtn = document.getElementById('axis-lock-btn');
+    if (!lockBtn) return;
+    
+    // Set initial state
+    updateAxisLockUI();
+
+    lockBtn.addEventListener('click', () => {
+        isAxisLocked = !isAxisLocked;
+        updateAxisLockUI();
+        applyAxisLockOptions();
+        
+        if (isAxisLocked) {
+            fitAllCharts();
+        }
+    });
+}
+
+function updateAxisLockUI() {
+    const lockBtn = document.getElementById('axis-lock-btn');
+    if (!lockBtn) return;
+    
+    if (isAxisLocked) {
+        lockBtn.classList.add('active');
+        lockBtn.innerHTML = '<i class="fa-solid fa-lock"></i> Auto-Fit & Lock';
+    } else {
+        lockBtn.classList.remove('active');
+        lockBtn.innerHTML = '<i class="fa-solid fa-lock-open"></i> Free Scroll';
+    }
+}
+
+function applyAxisLockOptions() {
+    const scrollOptions = isAxisLocked ? {
+        mouseWheel: false,
+        pressedMouseButton: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+    } : {
+        mouseWheel: true,
+        pressedMouseButton: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+    };
+    
+    const scaleOptions = isAxisLocked ? {
+        axisPressedMouseEvent: { time: false, price: true },
+        mouseWheel: false,
+        pinch: false,
+    } : {
+        axisPressedMouseEvent: { time: true, price: true },
+        mouseWheel: true,
+        pinch: true,
+    };
+
+    if (currentStockChart) {
+        currentStockChart.applyOptions({
+            handleScroll: scrollOptions,
+            handleScale: scaleOptions
+        });
+    }
+    if (rsiChart) {
+        rsiChart.applyOptions({
+            handleScroll: scrollOptions,
+            handleScale: scaleOptions
+        });
+    }
+    if (pipChartInstance) {
+        pipChartInstance.applyOptions({
+            handleScroll: scrollOptions,
+            handleScale: scaleOptions
+        });
+    }
+}
+
+function fitAllCharts() {
+    if (currentStockChart) {
+        currentStockChart.timeScale().fitContent();
+    }
+    if (rsiChart) {
+        rsiChart.timeScale().fitContent();
+    }
+    if (pipChartInstance) {
+        pipChartInstance.timeScale().fitContent();
+    }
+}
+
+let chartObservers = [];
+
+function observeChartResize(chartInstance, containerElement) {
+    if (!chartInstance || !containerElement) return;
+    
+    // Cleanup existing observer if any
+    const existing = chartObservers.find(o => o.container === containerElement);
+    if (existing) {
+        existing.observer.disconnect();
+        chartObservers = chartObservers.filter(o => o.container !== containerElement);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+            const { width, height } = entry.contentRect;
+            if (width > 0 && height > 0) {
+                try {
+                    chartInstance.resize(width, height);
+                } catch(e) {}
+            }
+        }
+    });
+    observer.observe(containerElement);
+    chartObservers.push({ container: containerElement, observer });
+}
+
+function initChartTabs() {
+    const tabs = document.querySelectorAll('.chart-tab-btn');
+    tabs.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const tabName = e.currentTarget.getAttribute('data-tab');
+            switchSubchart(tabName);
+        });
+    });
+}
+
+function switchSubchart(tabName) {
+    // 1. Manage tab active class
+    const tabs = document.querySelectorAll('.chart-tab-btn');
+    tabs.forEach(btn => {
+        if (btn.getAttribute('data-tab') === tabName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    const rsiBtn = document.querySelector('[data-type="rsi"]');
+    const pipBtn = document.querySelector('[data-type="pip-tactical"]');
+
+    // 2. Hide/Show charts
+    if (tabName === 'kline') {
+        toggleRSI(false);
+        if (rsiBtn) rsiBtn.classList.remove('active');
+        
+        isPipTacticalEnabled = false;
+        if (pipBtn) pipBtn.classList.remove('active');
+        const insightPanel = document.getElementById('tactical-insights-panel');
+        if (insightPanel) insightPanel.style.display = 'none';
+        const pipContainer = document.getElementById('pipChart');
+        if (pipContainer) pipContainer.style.display = 'none';
+        if (pipChartInstance) {
+            try { pipChartInstance.remove(); } catch(e) {}
+            pipChartInstance = null;
+            pipLineSeries = null;
+        }
+    } else if (tabName === 'rsi') {
+        isPipTacticalEnabled = false;
+        if (pipBtn) pipBtn.classList.remove('active');
+        const insightPanel = document.getElementById('tactical-insights-panel');
+        if (insightPanel) insightPanel.style.display = 'none';
+        const pipContainer = document.getElementById('pipChart');
+        if (pipContainer) pipContainer.style.display = 'none';
+        if (pipChartInstance) {
+            try { pipChartInstance.remove(); } catch(e) {}
+            pipChartInstance = null;
+            pipLineSeries = null;
+        }
+
+        toggleRSI(true);
+        if (rsiBtn) rsiBtn.classList.add('active');
+    } else if (tabName === 'pip') {
+        toggleRSI(false);
+        if (rsiBtn) rsiBtn.classList.remove('active');
+
+        isPipTacticalEnabled = true;
+        if (pipBtn) pipBtn.classList.add('active');
+        const insightPanel = document.getElementById('tactical-insights-panel');
+        if (insightPanel) insightPanel.style.display = 'block';
+        const pipContainer = document.getElementById('pipChart');
+        if (pipContainer) pipContainer.style.display = 'block';
+        if (currentChartData) {
+            renderTacticalChart(currentChartData);
+            
+            const patternLabel = document.getElementById('pip-pattern-label');
+            if (patternLabel) {
+                patternLabel.style.display = 'block';
+                patternLabel.innerHTML = `<div style="opacity: 0.5; font-size: 12px; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    INITIALIZING TACTICAL ANALYSIS...
+                </div>`;
+            }
+
+            const triggerRefresh = (delay) => {
+                setTimeout(() => {
+                    if (currentStockChart) {
+                        const range = currentStockChart.timeScale().getVisibleLogicalRange();
+                        if (range) {
+                            refreshPipAnalysis(range, currentChartData);
+                        }
+                    }
+                }, delay);
+            };
+
+            triggerRefresh(150);
+        }
+    }
+}
+
+// Expose test utilities to global window object
+window.switchView = switchView;
+window.calculateAISignals = calculateAISignals;
+window.updateAISignals = updateAISignals;
+window.currentPortfolio = currentPortfolio;
