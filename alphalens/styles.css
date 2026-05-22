@@ -11,6 +11,10 @@
     --positive: #10B981;
     --negative: #EF4444;
     
+    /* Scrollbar Palette */
+    --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+    
     /* Typography */
     --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     
@@ -933,11 +937,11 @@ tbody tr:hover {
     background: transparent;
 }
 .sidebar-column::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--scrollbar-thumb);
     border-radius: 3px;
 }
 .sidebar-column::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--scrollbar-thumb-hover);
 }
 
 .pip-pattern-tag {
@@ -2408,3 +2412,104 @@ tbody tr:hover {
         background-position: -200% 0;
     }
 }
+
+/* ==========================================
+   Light Theme System Overrides
+   ========================================== */
+body.light-theme {
+    /* Color Palette - Premium Light Theme */
+    --bg-main: #F2F4F7;
+    --bg-secondary: #FFFFFF;
+    --bg-glass: rgba(255, 255, 255, 0.75);
+    --border-glass: rgba(0, 0, 0, 0.08);
+    --text-primary: #1F2937;
+    --text-secondary: #4B5563;
+    --accent-primary: #2563EB;
+    --accent-hover: #1D4ED8;
+    --positive: #059669;
+    --negative: #DC2626;
+
+    /* Scrollbar Palette */
+    --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+}
+
+/* Specific Light Theme Component Polish */
+body.light-theme .search-autocomplete-dropdown {
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .autocomplete-item {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .autocomplete-item.active,
+body.light-theme .autocomplete-item:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+body.light-theme .autocomplete-item .stock-symbol {
+    color: var(--text-primary);
+}
+
+body.light-theme .autocomplete-item .stock-name {
+    color: var(--text-secondary);
+}
+
+body.light-theme .search-container {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+body.light-theme .sidebar {
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02);
+}
+
+body.light-theme .glass-panel {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03);
+}
+
+body.light-theme .top-bar-actions .theme-toggle-btn {
+    background: rgba(0, 0, 0, 0.02) !important;
+}
+
+body.light-theme .welcome-banner {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(96, 165, 250, 0.05));
+    border: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+body.light-theme .welcome-banner h1 {
+    color: var(--accent-primary);
+}
+
+body.light-theme .skeleton-line {
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.03) 25%, rgba(0, 0, 0, 0.07) 50%, rgba(0, 0, 0, 0.03) 75%);
+    background-size: 200% 100%;
+}
+
+body.light-theme .mobile-scroll-tip {
+    background: rgba(0, 0, 0, 0.02) !important;
+    color: var(--text-secondary) !important;
+}
+
+body.light-theme .app-toast {
+    background: rgba(255, 255, 255, 0.95);
+    color: #1F2937;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .app-toast.success {
+    background: rgba(5, 150, 105, 0.08) !important;
+    color: #065F46 !important;
+}
+
+body.light-theme .app-toast.danger {
+    background: rgba(220, 38, 38, 0.08) !important;
+    color: #991B1B !important;
+}
+
+body.light-theme .app-toast.info {
+    background: rgba(37, 99, 235, 0.08) !important;
+    color: #1E40AF !important;
+}
+

@@ -52,8 +52,13 @@
                     <input type="text" id="stock-search" placeholder="Search for a ticker (e.g., AAPL)..." autocomplete="off">
                     <div id="search-autocomplete" class="search-autocomplete-dropdown hidden"></div>
                 </div>
-                <div class="user-profile">
-                    <img src="https://ui-avatars.com/api/?name=User&background=random" alt="Profile">
+                <div class="top-bar-actions" style="display: flex; align-items: center; gap: 16px;">
+                    <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle Theme" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-glass); color: var(--text-primary); cursor: pointer; font-size: 16px; padding: 8px; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
+                        <i class="fa-solid fa-moon"></i>
+                    </button>
+                    <div class="user-profile">
+                        <img src="https://ui-avatars.com/api/?name=User&background=random" alt="Profile">
+                    </div>
                 </div>
             </header>
 

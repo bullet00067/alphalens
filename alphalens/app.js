@@ -299,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit(initResponsiveNavigation, 'ResponsiveNavigation');
     safeInit(initAxisLock, 'AxisLock');
     safeInit(initChartTabs, 'ChartTabs');
+    safeInit(initTheme, 'Theme');
     
     const bannerBtn = document.getElementById('ask-ai-banner-btn');
     if (bannerBtn) {
@@ -396,6 +397,67 @@ function initSettings() {
         } else {
             geminiStatus.innerHTML = '<span class="negative"><i class="fa-solid fa-circle-xmark"></i> Not set — AI will use mock responses</span>';
         }
+    }
+}
+
+// Theme Switcher Logic
+function initTheme() {
+    const themeBtn = document.getElementById('theme-toggle');
+    if (!themeBtn) return;
+
+    // Load active theme from localStorage
+    const savedTheme = localStorage.getItem('app-theme') || 'dark';
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        const icon = themeBtn.querySelector('i');
+        if (icon) {
+            icon.className = 'fa-solid fa-sun';
+        }
+    }
+
+    themeBtn.addEventListener('click', () => {
+        const isLight = document.body.classList.toggle('light-theme');
+        const icon = themeBtn.querySelector('i');
+        
+        if (isLight) {
+            localStorage.setItem('app-theme', 'light');
+            if (icon) icon.className = 'fa-solid fa-sun';
+            showToast('已切換為明亮主題 ☀️');
+        } else {
+            localStorage.setItem('app-theme', 'dark');
+            if (icon) icon.className = 'fa-solid fa-moon';
+            showToast('已切換為深色主題 🌙');
+        }
+        
+        // Dynamic chart options update
+        applyThemeToCharts();
+    });
+}
+
+function applyThemeToCharts() {
+    const isLight = document.body.classList.contains('light-theme');
+    const textColor = isLight ? '#4B5563' : '#9CA3AF';
+    const gridColor = isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.05)';
+    const borderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)';
+
+    const options = {
+        layout: { textColor },
+        grid: {
+            vertLines: { color: gridColor },
+            horzLines: { color: gridColor }
+        },
+        rightPriceScale: { borderColor },
+        timeScale: { borderColor }
+    };
+
+    if (currentStockChart) {
+        currentStockChart.applyOptions(options);
+    }
+    if (rsiChart) {
+        rsiChart.applyOptions(options);
+    }
+    if (pipChartInstance) {
+        pipChartInstance.applyOptions(options);
     }
 }
 
@@ -2260,16 +2322,21 @@ function renderTradingViewChart(data) {
     chartContainer.innerHTML = '';
     if (!data || data.length === 0) return;
 
+    const isLight = document.body.classList.contains('light-theme');
+    const chartTextColor = isLight ? '#4B5563' : '#9CA3AF';
+    const chartGridColor = isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.05)';
+    const chartBorderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)';
+
     currentStockChart = createChart(chartContainer, {
-        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: chartTextColor },
+        grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
         crosshair: { mode: CrosshairMode.Normal },
         rightPriceScale: { 
-            borderColor: 'rgba(255,255,255,0.1)',
+            borderColor: chartBorderColor,
             minimumWidth: 100, // Fixed width to ensure alignment
             borderVisible: false
         },
-        timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
+        timeScale: { borderColor: chartBorderColor, timeVisible: true },
     });
 
     applyAxisLockOptions();
@@ -2742,15 +2809,20 @@ function toggleRSI(active, period = 14) {
     
     // Don't set display:block — the .chart-panel.active CSS controls visibility
     // Let createChart use the container's actual rendered dimensions
+    const isLight = document.body.classList.contains('light-theme');
+    const chartTextColor = isLight ? '#4B5563' : '#9CA3AF';
+    const chartGridColor = isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.03)';
+    const chartBorderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)';
+
     rsiChart = createChart(rsiContainer, {
-        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#9CA3AF', fontSize: 10 },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.03)' }, horzLines: { color: 'rgba(255,255,255,0.03)' } },
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: chartTextColor, fontSize: 10 },
+        grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
         rightPriceScale: { 
-            borderColor: 'rgba(255,255,255,0.1)', 
+            borderColor: chartBorderColor, 
             scaleMargins: { top: 0.1, bottom: 0.1 },
             minimumWidth: 80
         },
-        timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true, visible: false },
+        timeScale: { borderColor: chartBorderColor, timeVisible: true, visible: false },
         crosshair: { mode: CrosshairMode.Normal },
     });
 
@@ -3429,15 +3501,20 @@ function renderTacticalChart(candles) {
 
     // Use actual rendered container height (fills split-view panel), fallback to 220
     const pipHeight = Math.max((chartDiv.closest('.chart-panel')?.clientHeight || 300) - 100, 160);
+    const isLight = document.body.classList.contains('light-theme');
+    const chartTextColor = isLight ? '#4B5563' : '#94a3b8';
+    const chartGridColor = isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.05)';
+    const chartBorderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)';
+
     pipChartInstance = createChart(chartDiv, {
         width: pipContainer.clientWidth || 800,
         height: pipHeight,
-        layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
-        grid: { vertLines: { color: 'rgba(255,255,255,0.05)' }, horzLines: { color: 'rgba(255,255,255,0.05)' } },
+        layout: { background: { color: 'transparent' }, textColor: chartTextColor },
+        grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
         timeScale: { 
             visible: true, 
             borderVisible: false,
-            borderColor: 'rgba(255,255,255,0.1)',
+            borderColor: chartBorderColor,
             rightOffset: 12, // Match main chart offset
             barSpacing: 6,   // Initial spacing
         },
