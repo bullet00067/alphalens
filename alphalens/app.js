@@ -468,6 +468,10 @@ function switchView(viewId) {
         if (overlay) overlay.classList.remove('active');
         document.body.style.overflow = '';
     }
+
+    if (viewId === 'stock-detail-view') {
+        setTimeout(resizeAllCharts, 100);
+    }
 }
 
 // Common TW Stocks mapping for name-to-ticker resolution
@@ -2264,6 +2268,10 @@ function renderTradingViewChart(data) {
     volumeSeries = null;
     bollingerSeries = { upper: null, mid: null, lower: null };
     document.querySelectorAll('.indicator-btn').forEach(btn => btn.classList.remove('active'));
+
+    // Delayed resize to ensure rendering pass/layout is settled
+    setTimeout(resizeAllCharts, 50);
+    setTimeout(resizeAllCharts, 150);
 }
 
 // --- Helper for Range Equality ---
@@ -4130,6 +4138,52 @@ function observeChartResize(chartInstance, containerElement) {
     observer.observe(containerElement);
     chartObservers.push({ container: containerElement, observer });
 }
+
+function resizeAllCharts() {
+    // 1. Resize K-line chart
+    if (currentStockChart) {
+        const el = document.getElementById('stockChart');
+        if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+            try {
+                currentStockChart.resize(el.clientWidth, el.clientHeight);
+                currentStockChart.timeScale().fitContent();
+            } catch(e) {
+                console.warn('[RESIZE] K-Line resize failed:', e);
+            }
+        }
+    }
+    // 2. Resize RSI chart
+    if (rsiChart) {
+        const el = document.getElementById('rsiChart');
+        if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+            try {
+                rsiChart.resize(el.clientWidth, el.clientHeight);
+                rsiChart.timeScale().fitContent();
+            } catch(e) {
+                console.warn('[RESIZE] RSI resize failed:', e);
+            }
+        }
+    }
+    // 3. Resize PIP Tactical chart
+    if (pipChartInstance) {
+        const el = document.getElementById('pipChart');
+        if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+            try {
+                pipChartInstance.resize(el.clientWidth, el.clientHeight);
+                pipChartInstance.timeScale().fitContent();
+            } catch(e) {
+                console.warn('[RESIZE] PIP resize failed:', e);
+            }
+        }
+    }
+}
+
+// Global window event listeners for orientation and viewport changes
+window.addEventListener('resize', resizeAllCharts);
+window.addEventListener('orientationchange', () => {
+    // Small delay to let browser orientation rendering pass complete
+    setTimeout(resizeAllCharts, 200);
+});
 
 function initChartTabs() {
     const tabs = document.querySelectorAll('.chart-tab-btn');
