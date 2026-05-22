@@ -1633,12 +1633,137 @@ async function populateDashboard() {
 }
 
 // Stock Detail Logic
+const POPULAR_STOCKS = [
+    { symbol: '2330.TW', name: '台積電', market: 'tw' },
+    { symbol: '2317.TW', name: '鴻海', market: 'tw' },
+    { symbol: '2454.TW', name: '聯發科', market: 'tw' },
+    { symbol: '8299.TWO', name: '群聯', market: 'tw' },
+    { symbol: '2603.TW', name: '長榮', market: 'tw' },
+    { symbol: '2881.TW', name: '富邦金', market: 'tw' },
+    { symbol: '2882.TW', name: '國泰金', market: 'tw' },
+    { symbol: '0050.TW', name: '元大台灣50', market: 'tw' },
+    { symbol: 'AAPL', name: 'Apple Inc.', market: 'us' },
+    { symbol: 'TSLA', name: 'Tesla Inc.', market: 'us' },
+    { symbol: 'NVDA', name: 'NVIDIA Corp.', market: 'us' },
+    { symbol: 'MSFT', name: 'Microsoft Corp.', market: 'us' },
+    { symbol: 'AMZN', name: 'Amazon.com Inc.', market: 'us' },
+    { symbol: 'GOOGL', name: 'Alphabet Inc.', market: 'us' },
+    { symbol: 'META', name: 'Meta Platforms', market: 'us' },
+    { symbol: 'NFLX', name: 'Netflix Inc.', market: 'us' }
+];
+
 function setupSearch() {
     const searchInput = document.getElementById('stock-search');
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && searchInput.value.trim() !== '') {
-            loadStockDetail(searchInput.value.toUpperCase());
-            searchInput.value = '';
+    const autocompleteContainer = document.getElementById('search-autocomplete');
+    let activeIndex = -1;
+    let filteredStocks = [];
+
+    function renderSuggestions(suggestions) {
+        filteredStocks = suggestions;
+        if (suggestions.length === 0) {
+            autocompleteContainer.innerHTML = '';
+            autocompleteContainer.classList.add('hidden');
+            activeIndex = -1;
+            return;
+        }
+
+        autocompleteContainer.innerHTML = suggestions.map((stock, index) => `
+            <div class="autocomplete-item ${index === activeIndex ? 'active' : ''}" data-index="${index}" data-symbol="${stock.symbol}">
+                <div class="stock-info">
+                    <span class="stock-symbol">${stock.symbol}</span>
+                    <span class="stock-name">${stock.name}</span>
+                </div>
+                <span class="market-badge ${stock.market}">${stock.market.toUpperCase()}</span>
+            </div>
+        `).join('');
+        autocompleteContainer.classList.remove('hidden');
+
+        // Click handlers on items
+        const items = autocompleteContainer.querySelectorAll('.autocomplete-item');
+        items.forEach(item => {
+            item.addEventListener('click', () => {
+                const symbol = item.getAttribute('data-symbol');
+                loadStockDetail(symbol);
+                searchInput.value = '';
+                autocompleteContainer.classList.add('hidden');
+                activeIndex = -1;
+            });
+        });
+    }
+
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim().toUpperCase();
+        if (!query) {
+            renderSuggestions([]);
+            return;
+        }
+
+        // Filter: match query by symbol start or name partial
+        const matches = POPULAR_STOCKS.filter(stock => 
+            stock.symbol.toUpperCase().includes(query) || 
+            stock.name.includes(query) ||
+            stock.name.toLowerCase().includes(query.toLowerCase())
+        );
+
+        activeIndex = -1;
+        renderSuggestions(matches);
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+        const items = autocompleteContainer.querySelectorAll('.autocomplete-item');
+        if (autocompleteContainer.classList.contains('hidden') || items.length === 0) {
+            if (e.key === 'Enter' && searchInput.value.trim() !== '') {
+                loadStockDetail(searchInput.value.toUpperCase());
+                searchInput.value = '';
+                autocompleteContainer.classList.add('hidden');
+            }
+            return;
+        }
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = (activeIndex + 1) % items.length;
+            updateActiveItem(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = (activeIndex - 1 + items.length) % items.length;
+            updateActiveItem(items);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeIndex >= 0 && activeIndex < filteredStocks.length) {
+                const selectedSymbol = filteredStocks[activeIndex].symbol;
+                loadStockDetail(selectedSymbol);
+                searchInput.value = '';
+                autocompleteContainer.classList.add('hidden');
+                activeIndex = -1;
+            } else if (searchInput.value.trim() !== '') {
+                loadStockDetail(searchInput.value.toUpperCase());
+                searchInput.value = '';
+                autocompleteContainer.classList.add('hidden');
+            }
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            autocompleteContainer.classList.add('hidden');
+            activeIndex = -1;
+        }
+    });
+
+    function updateActiveItem(items) {
+        items.forEach((item, index) => {
+            if (index === activeIndex) {
+                item.classList.add('active');
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.classList.remove('active');
+            }
+        });
+    }
+
+    // Click outside to close dropdown
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !autocompleteContainer.contains(e.target)) {
+            autocompleteContainer.classList.add('hidden');
+            activeIndex = -1;
         }
     });
 }

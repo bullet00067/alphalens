@@ -47,9 +47,10 @@
                 <button class="menu-toggle" id="menu-toggle" aria-label="Toggle Menu">
                     <i class="fa-solid fa-bars"></i>
                 </button>
-                <div class="search-container">
+                <div class="search-container" style="position: relative;">
                     <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="text" id="stock-search" placeholder="Search for a ticker (e.g., AAPL)...">
+                    <input type="text" id="stock-search" placeholder="Search for a ticker (e.g., AAPL)..." autocomplete="off">
+                    <div id="search-autocomplete" class="search-autocomplete-dropdown hidden"></div>
                 </div>
                 <div class="user-profile">
                     <img src="https://ui-avatars.com/api/?name=User&background=random" alt="Profile">
@@ -277,6 +278,10 @@
                                     <button class="ghost-btn-danger" id="clear-indicators-btn" aria-label="Clear all indicators">Clear All</button>
                                 </div>
                             </div>
+                        </div>
+                        <!-- Mobile Touch Gesture scroll guide tip -->
+                        <div class="mobile-scroll-tip">
+                            <i class="fa-solid fa-circle-info"></i> 滑動左右外側或虛線框外可上下滾動網頁
                         </div>
                         <!-- Shared chart viewport: all panels are absolute-positioned inside here -->
                         <div class="chart-view-area">

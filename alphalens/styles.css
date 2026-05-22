@@ -2177,3 +2177,114 @@ tbody tr:hover {
     color: #ffffff;
     box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
 }
+
+/* ==========================================
+   Phase 4: Search Autocomplete & Touch Gutters
+   ========================================== */
+
+.search-autocomplete-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    max-height: 280px;
+    overflow-y: auto;
+    background: rgba(18, 18, 18, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    margin-top: 8px;
+    z-index: 1000;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.search-autocomplete-dropdown.hidden {
+    display: none !important;
+}
+
+.autocomplete-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.autocomplete-item:last-child {
+    border-bottom: none;
+}
+
+.autocomplete-item.active,
+.autocomplete-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.autocomplete-item .stock-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.autocomplete-item .stock-symbol {
+    font-weight: 600;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+.autocomplete-item .stock-name {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 12px;
+}
+
+.market-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.market-badge.tw {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10B981;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.market-badge.us {
+    background: rgba(245, 158, 11, 0.15);
+    color: #F59E0B;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+/* Mobile Touch Gesture Guide & Gutters */
+.mobile-scroll-tip {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.15);
+    border-radius: 8px;
+    color: #93C5FD;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+@media (max-width: 1024px) {
+    .mobile-scroll-tip {
+        display: flex;
+    }
+    
+    .chart-view-area {
+        padding-left: 12px;
+        padding-right: 12px;
+        background: rgba(255, 255, 255, 0.005);
+        border-left: 2px dashed rgba(255, 255, 255, 0.03);
+        border-right: 2px dashed rgba(255, 255, 255, 0.03);
+        border-radius: 8px;
+    }
+}
