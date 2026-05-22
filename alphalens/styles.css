@@ -2288,3 +2288,123 @@ tbody tr:hover {
         border-radius: 8px;
     }
 }
+
+/* ==========================================
+   Phase 5: Watchlist Toast & AI pulsing skeleton loaders
+   ========================================== */
+
+/* Premium Toast System */
+.app-toast-container {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Desktop: Top Right placement */
+@media (min-width: 1024px) {
+    .app-toast-container {
+        top: 30px;
+        right: 30px;
+        align-items: flex-end;
+    }
+}
+
+/* Mobile: Top Center placement */
+@media (max-width: 1023px) {
+    .app-toast-container {
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 40px);
+        max-width: 360px;
+        align-items: center;
+    }
+}
+
+.app-toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+    background: rgba(22, 22, 22, 0.9);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: auto;
+    transform: translateY(-20px);
+    transition: opacity 0.3s, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Desktop slide right overlay */
+@media (min-width: 1024px) {
+    .app-toast {
+        transform: translateX(40px);
+    }
+}
+
+.app-toast.show {
+    opacity: 1;
+    transform: translate(0, 0) !important;
+}
+
+/* Semantic visual theme tints */
+.app-toast.success {
+    background: rgba(16, 185, 129, 0.12) !important;
+    border-left: 4px solid #10B981 !important;
+    color: #D1FAE5 !important;
+}
+
+.app-toast.danger {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border-left: 4px solid #EF4444 !important;
+    color: #FEE2E2 !important;
+}
+
+.app-toast.info {
+    background: rgba(59, 130, 246, 0.12) !important;
+    border-left: 4px solid #3B82F6 !important;
+    color: #DBEAFE !important;
+}
+
+.app-toast i {
+    font-size: 14px;
+}
+
+/* AI Summary Skeleton Loader */
+.skeleton-loader {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    padding: 4px 0;
+}
+
+.skeleton-line {
+    height: 14px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+    background-size: 200% 100%;
+    border-radius: 4px;
+    animation: skeletonPulse 1.6s infinite linear;
+}
+
+.skeleton-line.w-90 { width: 90%; }
+.skeleton-line.w-80 { width: 80%; }
+.skeleton-line.w-65 { width: 65%; }
+
+@keyframes skeletonPulse {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}

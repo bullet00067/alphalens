@@ -2083,26 +2083,46 @@ async function fetchStockHistoryCached(ticker, resolution = '1day') {
     return result;
 }
 
-function showToast(msg) {
-    let toast = document.getElementById('app-toast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'app-toast';
-        toast.style.cssText = `
-            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
-            background: #3B82F6; color: white; padding: 12px 24px; border-radius: 8px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 9999; font-weight: 600;
-            opacity: 0; transition: opacity 0.3s, bottom 0.3s;
-        `;
-        document.body.appendChild(toast);
+function showToast(msg, duration = 3500) {
+    let container = document.getElementById('app-toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'app-toast-container';
+        container.className = 'app-toast-container';
+        document.body.appendChild(container);
     }
-    toast.textContent = msg;
-    toast.style.opacity = '1';
-    toast.style.bottom = '40px';
+
+    const toast = document.createElement('div');
+    toast.className = 'app-toast';
+
+    // Match theme tags
+    let type = 'info';
+    let icon = 'fa-info-circle';
+    if (msg.includes('Removed') || msg.includes('failed') || msg.includes('🚨') || msg.includes('Failed') || msg.includes('missing')) {
+        type = 'danger';
+        icon = 'fa-circle-exclamation';
+    } else if (msg.includes('Added') || msg.includes('success') || msg.includes('Welcome') || msg.includes('Success') || msg.includes('successfully')) {
+        type = 'success';
+        icon = 'fa-circle-check';
+    }
+
+    toast.classList.add(type);
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${msg}</span>`;
+    container.appendChild(toast);
+
+    // Force reflow for opacity transition
+    toast.offsetHeight;
+    toast.classList.add('show');
+
     setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.bottom = '30px';
-    }, 3500);
+        toast.classList.remove('show');
+        setTimeout(() => {
+            toast.remove();
+            if (container.children.length === 0) {
+                container.remove();
+            }
+        }, 300);
+    }, duration);
 }
 
 async function loadStockDetail(ticker) {
@@ -2112,7 +2132,13 @@ async function loadStockDetail(ticker) {
     document.getElementById('detail-name').textContent = ticker; // Default to ticker during load
     document.getElementById('detail-price').textContent = '...';
     document.getElementById('detail-change').textContent = '';
-    document.getElementById('ai-quick-summary').innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Fetching dual-engine data...`;
+    document.getElementById('ai-quick-summary').innerHTML = `
+        <div class="skeleton-loader">
+            <div class="skeleton-line w-90"></div>
+            <div class="skeleton-line w-80"></div>
+            <div class="skeleton-line w-65"></div>
+        </div>
+    `;
     
     updateObservationButton(ticker);
 
