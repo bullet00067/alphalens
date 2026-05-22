@@ -2513,3 +2513,11 @@ body.light-theme .app-toast.info {
     color: #1E40AF !important;
 }
 
+body.light-theme .main-stock-chart {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+body.light-theme .indicator-chart-container {
+    background: rgba(0, 0, 0, 0.01);
+}
+
