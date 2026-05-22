@@ -2640,15 +2640,62 @@ function refreshPipAnalysis(logicalRange, allData) {
                 renderPatternGeometry(p, pips, pipChartInstance);
             } else {
                 if (pipHighlightSeries) pipHighlightSeries.setData([]);
-                patternLabel.style.display = 'block';
-                patternLabel.style.minHeight = '60px'; 
-                patternLabel.innerHTML = `<div style="opacity: 0.5; font-size: 12px; display: flex; align-items: center; gap: 8px;">
-                    <i class="fa-solid fa-circle-notch fa-spin"></i>
-                    SCANNING FOR PATTERN SIGNALS...
-                </div>`;
                 if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
                 if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
                 renderAmplitudeTargets(null, null); // Clear target lines
+
+                const trend = analyzeTrend(pips, visibleData);
+                let trendColor = '#94a3b8';
+                let trendName = 'NEUTRAL ⚖️';
+                let trendDesc = '無明顯方向性結構 (No clear directional trend structure)';
+                
+                if (trend.status === 'BULLISH') {
+                    trendColor = '#22c55e';
+                    trendName = 'BULLISH 📈';
+                    trendDesc = '上升結構：高點與低點持續墊高 (Higher Highs & Higher Lows)';
+                } else if (trend.status === 'BEARISH') {
+                    trendColor = '#ef4444';
+                    trendName = 'BEARISH 📉';
+                    trendDesc = '下跌結構：高點與低點持續降低 (Lower Highs & Lower Lows)';
+                } else if (trend.status === 'CONSOLIDATION') {
+                    trendColor = '#eab308';
+                    trendName = 'CONSOLIDATION 🔄';
+                    trendDesc = '盤整結構：波動收斂與區間震盪 (Rangebound / Compressing Volatility)';
+                }
+
+                const prob = signal.probability || { bullish: 50, bearish: 50 };
+
+                patternLabel.innerHTML = `
+                    <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span style="color: ${trendColor}; font-weight: bold; font-size: 13px;">市場結構: ${trendName}</span>
+                                <span style="background: rgba(255, 255, 255, 0.08); color: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;">無幾何圖態</span>
+                            </div>
+                            <span style="font-size: 0.9em; font-weight: bold;">
+                                <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
+                                <span style="opacity: 0.5; margin: 0 4px;">|</span>
+                                <i class="fa-solid fa-arrow-trend-down" style="color: #ef4444"></i> ${prob.bearish}%
+                            </span>
+                        </div>
+                        <div style="font-size: 11px; color: rgba(248, 250, 252, 0.6); margin-top: 1px;">
+                            ${trendDesc}
+                        </div>
+                        <div style="height: 4px; width: 100%; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; display: flex; margin-top: 2px;">
+                            <div style="width: ${prob.bullish}%; background: #22c55e; height: 100%;"></div>
+                            <div style="width: ${prob.bearish}%; background: #ef4444; height: 100%;"></div>
+                        </div>
+                    </div>
+                `;
+
+                patternLabel.style.display = 'flex';
+                patternLabel.style.background = 'rgba(15, 23, 42, 0.9)';
+                patternLabel.style.backdropFilter = 'blur(8px)';
+                patternLabel.style.color = '#f8fafc';
+                patternLabel.style.borderLeft = `4px solid ${trendColor}`;
+                patternLabel.style.padding = '12px 16px';
+                patternLabel.style.borderRadius = '6px';
+                patternLabel.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
             }
             
             renderStructureLabels(pips, pipChartInstance);
@@ -3572,17 +3619,23 @@ function renderTacticalChart(candles) {
         window._pipMouseLeaveHandler = null;
     }
 
-    // Add a label indicating standardized units
-    const statsLabel = document.createElement('div');
+    // Add a label indicating standardized units (avoid duplicates and position on the top-right to prevent overlap)
+    let statsLabel = document.getElementById('pip-stats-label');
+    if (!statsLabel) {
+        statsLabel = document.createElement('div');
+        statsLabel.id = 'pip-stats-label';
+        pipContainer.appendChild(statsLabel);
+    }
     statsLabel.style.position = 'absolute';
     statsLabel.style.top = '10px';
-    statsLabel.style.left = '10px';
+    statsLabel.style.right = '110px';
+    statsLabel.style.left = 'auto';
+    statsLabel.style.textAlign = 'right';
     statsLabel.style.zIndex = '5';
     statsLabel.style.fontSize = '10px';
     statsLabel.style.color = 'rgba(255,255,255,0.4)';
     statsLabel.style.pointerEvents = 'none';
     statsLabel.textContent = 'STANDARDIZED (Z-SCORE)';
-    pipContainer.appendChild(statsLabel);
 
     pipLineSeries = pipChartInstance.addSeries(LineSeries, {
         color: '#eab308',
@@ -3731,45 +3784,26 @@ function renderTacticalChart(candles) {
         pipChartInstance.subscribeCrosshairMove((param) => {
             if (isSyncing || !currentStockChart || !candlestickSeries) return;
 
-            // Marker hover for tactical chart
-            if (!param || !param.time) {
-                if (tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
-                        const { text, ...rest } = m;
-                        return rest;
-                    }));
-                    tacticalHoverState.time = null;
-                }
-            } else {
-                // Use the updated global reference
-                const pip = (typeof window.allTacticalPips !== 'undefined' ? window.allTacticalPips : allPips).find(p => p.time === param.time);
-                if (pip) {
-                    if (tacticalHoverState.time !== param.time) {
+            // Declarative, unconditional marker hover logic for tactical chart
+            const activeTime = (param && param.time) ? param.time : null;
+            const pipsList = (typeof window.allTacticalPips !== 'undefined') ? window.allTacticalPips : allPips;
+
+            const updated = tacticalPipMarkers.map(marker => {
+                if (activeTime && marker.time === activeTime) {
+                    const pip = pipsList.find(p => p.time === activeTime);
+                    if (pip) {
                         const m = window.tacticalStdMean || 0;
                         const d = window.tacticalStdDev || 1;
                         const priceVal = Math.pow(10, pip.stdY * d + m);
-                        const text = `Val: $${priceVal.toFixed(2)}`;
-                        const updated = tacticalPipMarkers.map(marker => {
-                            if (marker.time === param.time) {
-                                return { ...marker, text };
-                            } else {
-                                const { text, ...rest } = marker;
-                                return rest;
-                            }
-                        });
-                        createSeriesMarkers(pipLineSeries, updated);
-                        tacticalHoverState.time = param.time;
-                    }
-                } else {
-                    if (tacticalHoverState.time !== null) {
-                        createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
-                            const { text, ...rest } = m;
-                            return rest;
-                        }));
-                        tacticalHoverState.time = null;
+                        return { ...marker, text: `Val: $${priceVal.toFixed(2)}` };
                     }
                 }
-            }
+                const { text, ...rest } = marker;
+                return rest;
+            });
+
+            createSeriesMarkers(pipLineSeries, updated);
+            tacticalHoverState.time = activeTime;
 
             // Sync back to K-line
             isSyncing = true;
@@ -3785,13 +3819,12 @@ function renderTacticalChart(candles) {
 
         // Fallback for tactical chart mouseleave
         window._pipMouseLeaveHandler = () => {
-            if (tacticalHoverState.time !== null) {
-                createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
-                    const { text, ...rest } = m;
-                    return rest;
-                }));
-                tacticalHoverState.time = null;
-            }
+            const updated = tacticalPipMarkers.map(m => {
+                const { text, ...rest } = m;
+                return rest;
+            });
+            createSeriesMarkers(pipLineSeries, updated);
+            tacticalHoverState.time = null;
         };
         if (pipContainer) {
             pipContainer.addEventListener('mouseleave', window._pipMouseLeaveHandler);
@@ -3856,12 +3889,66 @@ function renderTacticalChart(candles) {
         renderPatternGeometry(p, visiblePips, pipChartInstance);
         renderPatternLabels(p, tacticalSignal, visibleCandles, pipChartInstance);
     } else {
-        patternLabel.style.display = 'none';
-        const sidePattern = document.getElementById('tactical-pattern-name');
-        if (sidePattern) sidePattern.textContent = 'NONE';
         if (pipPatternUpperSeries) pipPatternUpperSeries.setData([]);
         if (pipPatternLowerSeries) pipPatternLowerSeries.setData([]);
         renderAmplitudeTargets(null, null); // Clear any stale target lines
+
+        const trend = analyzeTrend(visiblePips, visibleCandles);
+        let trendColor = '#94a3b8';
+        let trendName = 'NEUTRAL ⚖️';
+        let trendDesc = '無明顯方向性結構 (No clear directional trend structure)';
+        
+        if (trend.status === 'BULLISH') {
+            trendColor = '#22c55e';
+            trendName = 'BULLISH 📈';
+            trendDesc = '上升結構：高點與低點持續墊高 (Higher Highs & Higher Lows)';
+        } else if (trend.status === 'BEARISH') {
+            trendColor = '#ef4444';
+            trendName = 'BEARISH 📉';
+            trendDesc = '下跌結構：高點與低點持續降低 (Lower Highs & Lower Lows)';
+        } else if (trend.status === 'CONSOLIDATION') {
+            trendColor = '#eab308';
+            trendName = 'CONSOLIDATION 🔄';
+            trendDesc = '盤整結構：波動收斂與區間震盪 (Rangebound / Compressing Volatility)';
+        }
+
+        const prob = tacticalSignal.probability || { bullish: 50, bearish: 50 };
+
+        patternLabel.innerHTML = `
+            <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="color: ${trendColor}; font-weight: bold; font-size: 13px;">市場結構: ${trendName}</span>
+                        <span style="background: rgba(255, 255, 255, 0.08); color: rgba(255,255,255,0.7); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; margin-left: 8px;">無幾何圖態</span>
+                    </div>
+                    <span style="font-size: 0.9em; font-weight: bold;">
+                        <i class="fa-solid fa-arrow-trend-up" style="color: #22c55e"></i> ${prob.bullish}% 
+                        <span style="opacity: 0.5; margin: 0 4px;">|</span>
+                        <i class="fa-solid fa-arrow-trend-down" style="color: #ef4444"></i> ${prob.bearish}%
+                    </span>
+                </div>
+                <div style="font-size: 11px; color: rgba(248, 250, 252, 0.6); margin-top: 1px;">
+                    ${trendDesc}
+                </div>
+                <div style="height: 4px; width: 100%; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; display: flex; margin-top: 2px;">
+                    <div style="width: ${prob.bullish}%; background: #22c55e; height: 100%;"></div>
+                    <div style="width: ${prob.bearish}%; background: #ef4444; height: 100%;"></div>
+                </div>
+            </div>
+        `;
+        patternLabel.style.display = 'flex';
+        patternLabel.style.background = 'rgba(15, 23, 42, 0.8)';
+        patternLabel.style.backdropFilter = 'blur(4px)';
+        patternLabel.style.color = '#f8fafc';
+        patternLabel.style.borderLeft = `4px solid ${trendColor}`;
+        patternLabel.style.padding = '10px 14px';
+        patternLabel.style.borderRadius = '4px';
+
+        const sidePattern = document.getElementById('tactical-pattern-name');
+        if (sidePattern) {
+            sidePattern.textContent = 'NONE';
+            sidePattern.style.color = '#94a3b8';
+        }
     }
 
     renderStructureLabels(visiblePips, pipChartInstance);
