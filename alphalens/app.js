@@ -2303,6 +2303,7 @@ let rsiSeries = null;
 let mainPipMarkers = [];
 let tacticalPipMarkers = [];
 const mainHoverState = { time: null }; // Module-level so refreshPipAnalysis can reset it
+let tacticalHoverState = { time: null };
 
 // --- Charting ---
 function renderTradingViewChart(data) {
@@ -2470,10 +2471,8 @@ function renderTradingViewChart(data) {
     }
 
     
-    // Scale Optimization: Show exactly 60 candles by default regardless of timeframe
-    if (isAxisLocked) {
-        currentStockChart.timeScale().fitContent();
-    } else if (data.length > 60) {
+    // Scale Optimization: Show exactly 60 candles by default regardless of timeframe or Axis Lock
+    if (data.length > 60) {
         currentStockChart.timeScale().setVisibleLogicalRange({
             from: data.length - 60,
             to: data.length - 1
@@ -2796,6 +2795,10 @@ function toggleVolume(active) {
 function toggleRSI(active, period = 14) {
     const rsiContainer = document.getElementById('rsiChart');
     if (!active) {
+        if (window._rsiMainRangeListener && currentStockChart) {
+            try { currentStockChart.timeScale().unsubscribeVisibleLogicalRangeChange(window._rsiMainRangeListener); } catch(e) {}
+            window._rsiMainRangeListener = null;
+        }
         if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
         // Don't set display:none — the panel visibility is controlled by .chart-panel.active
         return;
@@ -2804,6 +2807,10 @@ function toggleRSI(active, period = 14) {
     if (currentChartData.length < period + 1) return;
     
     // Cleanup old instances to prevent duplication
+    if (window._rsiMainRangeListener && currentStockChart) {
+        try { currentStockChart.timeScale().unsubscribeVisibleLogicalRangeChange(window._rsiMainRangeListener); } catch(e) {}
+        window._rsiMainRangeListener = null;
+    }
     if (rsiChart) { rsiChart.remove(); rsiChart = null; rsiSeries = null; }
     rsiContainer.innerHTML = '';
     
@@ -2830,14 +2837,27 @@ function toggleRSI(active, period = 14) {
     observeChartResize(rsiChart, rsiContainer);
     rsiSeries = rsiChart.addSeries(LineSeries, { color: '#A78BFA', lineWidth: 2, title: 'RSI 14' });
     rsiSeries.setData(calcRSI(currentChartData, period));
+    
     // Sync time scales
-    currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-        if (range && rsiChart) rsiChart.timeScale().setVisibleLogicalRange(range);
-    });
+    const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
+    if (mainRange) {
+        try { rsiChart.timeScale().setVisibleLogicalRange(mainRange); } catch(e) {}
+    }
+
+    window._rsiMainRangeListener = (range) => {
+        if (isSyncing || !range || !rsiChart) return;
+        isSyncing = true;
+        try { rsiChart.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+        isSyncing = false;
+    };
+    currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(window._rsiMainRangeListener);
+
     rsiChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-        if (range && currentStockChart) currentStockChart.timeScale().setVisibleLogicalRange(range);
+        if (isSyncing || !range || !currentStockChart) return;
+        isSyncing = true;
+        try { currentStockChart.timeScale().setVisibleLogicalRange(range); } catch(e) {}
+        isSyncing = false;
     });
-    rsiChart.timeScale().fitContent();
 }
 
 // --- Indicator Init & Toggle Logic ---
@@ -3532,41 +3552,24 @@ function renderTacticalChart(candles) {
     applyAxisLockOptions();
     observeChartResize(pipChartInstance, chartDiv);
 
-    // --- CHART SYNC LOGIC ---
-    try {
-        if (currentStockChart) {
-            // 1. Sync Time Scales (Scrolling/Zooming)
-            currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                if (isSyncing || !range) return;
-                isSyncing = true;
-                try { pipChartInstance.timeScale().setVisibleLogicalRange(range); } catch(e) {}
-                isSyncing = false;
-            });
-
-            pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
-                if (isSyncing || !range) return;
-                isSyncing = true;
-                try { currentStockChart.timeScale().setVisibleLogicalRange(range); } catch(e) {}
-                isSyncing = false;
-            });
-
-            // 2. Sync Crosshair (Vertical Lines)
-            currentStockChart.subscribeCrosshairMove(param => {
-                if (isSyncing || !param || !param.time) return;
-                isSyncing = true;
-                try { pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries); } catch(e) {}
-                isSyncing = false;
-            });
-
-            pipChartInstance.subscribeCrosshairMove(param => {
-                if (isSyncing || !param || !param.time) return;
-                isSyncing = true;
-                try { currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries); } catch(e) {}
-                isSyncing = false;
-            });
-        }
-    } catch(syncErr) {
-        console.warn('[TACTICAL] Chart sync setup failed (non-critical):', syncErr);
+    // --- CLEANUP PREVIOUS LISTENERS ---
+    if (window._pipMainRangeListener && currentStockChart) {
+        try {
+            currentStockChart.timeScale().unsubscribeVisibleLogicalRangeChange(window._pipMainRangeListener);
+        } catch(e) {}
+        window._pipMainRangeListener = null;
+    }
+    if (window._pipMainCrosshairListener && currentStockChart) {
+        try {
+            currentStockChart.unsubscribeCrosshairMove(window._pipMainCrosshairListener);
+        } catch(e) {}
+        window._pipMainCrosshairListener = null;
+    }
+    if (window._pipMouseLeaveHandler && pipContainer) {
+        try {
+            pipContainer.removeEventListener('mouseleave', window._pipMouseLeaveHandler);
+        } catch(e) {}
+        window._pipMouseLeaveHandler = null;
     }
 
     // Add a label indicating standardized units
@@ -3673,49 +3676,64 @@ function renderTacticalChart(candles) {
 
     pipLineSeries.setData(allPips.map(p => ({ time: p.time, value: p.stdY })));
 
-    // 3. Sync Logic
-    
+    // 3. Consolidated & Leak-Proof Sync Logic
     if (currentStockChart) {
         // Initial Range Sync
         const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
         if (mainRange) {
-            pipChartInstance.timeScale().setVisibleLogicalRange(mainRange);
+            try {
+                pipChartInstance.timeScale().setVisibleLogicalRange(mainRange);
+            } catch(e) {}
         } else {
-            pipChartInstance.timeScale().setVisibleLogicalRange({ from: candles.length - 60, to: candles.length - 1 });
+            try {
+                pipChartInstance.timeScale().setVisibleLogicalRange({ from: candles.length - 60, to: candles.length - 1 });
+            } catch(e) {}
         }
 
-        currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-            if (!range || !pipChartInstance) return;
-            const tacticalRange = pipChartInstance.timeScale().getVisibleLogicalRange();
-            if (JSON.stringify(range) !== JSON.stringify(tacticalRange)) {
+        // K-line to PIP Time scale synchronization
+        window._pipMainRangeListener = (range) => {
+            if (isSyncing || !range || !pipChartInstance) return;
+            isSyncing = true;
+            try {
                 pipChartInstance.timeScale().setVisibleLogicalRange(range);
-            }
-        });
+            } catch(e) {}
+            isSyncing = false;
+        };
+        currentStockChart.timeScale().subscribeVisibleLogicalRangeChange(window._pipMainRangeListener);
 
+        // PIP to K-line Time scale synchronization
         pipChartInstance.timeScale().subscribeVisibleLogicalRangeChange(range => {
-            if (!range || !currentStockChart) return;
-            const mainRange = currentStockChart.timeScale().getVisibleLogicalRange();
-            if (JSON.stringify(range) !== JSON.stringify(mainRange)) {
-                pipChartInstance.timeScale().setVisibleLogicalRange(range);
-            }
+            if (isSyncing || !range || !currentStockChart) return;
+            isSyncing = true;
+            try {
+                currentStockChart.timeScale().setVisibleLogicalRange(range);
+            } catch(e) {}
+            isSyncing = false;
         });
 
-        currentStockChart.subscribeCrosshairMove(param => {
-            if (!pipChartInstance || !pipLineSeries) return;
-            if (!param.time) {
-                pipChartInstance.clearCrosshairPosition();
-            } else {
-                pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
-            }
-        });
-        const tacticalHoverState = { time: null };
-        pipChartInstance.subscribeCrosshairMove(param => {
-            if (!currentStockChart || !candlestickSeries) return;
-            
+        // K-line to PIP Crosshair synchronization
+        window._pipMainCrosshairListener = (param) => {
+            if (isSyncing || !pipChartInstance || !pipLineSeries) return;
+            isSyncing = true;
+            try {
+                if (!param || !param.time) {
+                    pipChartInstance.clearCrosshairPosition();
+                } else {
+                    pipChartInstance.setCrosshairPosition(0, param.time, pipLineSeries);
+                }
+            } catch(e) {}
+            isSyncing = false;
+        };
+        currentStockChart.subscribeCrosshairMove(window._pipMainCrosshairListener);
+
+        // PIP to K-line Crosshair synchronization + PIP Interactive Marker Hover
+        tacticalHoverState.time = null; // Re-initialize hover state
+        pipChartInstance.subscribeCrosshairMove((param) => {
+            if (isSyncing || !currentStockChart || !candlestickSeries) return;
+
             // Marker hover for tactical chart
-            if (!param.time) {
+            if (!param || !param.time) {
                 if (tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, []); 
                     createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
                         const { text, ...rest } = m;
                         return rest;
@@ -3725,49 +3743,58 @@ function renderTacticalChart(candles) {
             } else {
                 // Use the updated global reference
                 const pip = (typeof window.allTacticalPips !== 'undefined' ? window.allTacticalPips : allPips).find(p => p.time === param.time);
-                if (pip && tacticalHoverState.time !== param.time) {
-                    const m = window.tacticalStdMean || 0;
-                    const d = window.tacticalStdDev || 1;
-                    const priceVal = Math.pow(10, pip.stdY * d + m);
-                    const text = `Val: $${priceVal.toFixed(2)}`;
-                    const updated = tacticalPipMarkers.map(m => {
-                        if (m.time === param.time) {
-                            return { ...m, text };
-                        } else {
+                if (pip) {
+                    if (tacticalHoverState.time !== param.time) {
+                        const m = window.tacticalStdMean || 0;
+                        const d = window.tacticalStdDev || 1;
+                        const priceVal = Math.pow(10, pip.stdY * d + m);
+                        const text = `Val: $${priceVal.toFixed(2)}`;
+                        const updated = tacticalPipMarkers.map(marker => {
+                            if (marker.time === param.time) {
+                                return { ...marker, text };
+                            } else {
+                                const { text, ...rest } = marker;
+                                return rest;
+                            }
+                        });
+                        createSeriesMarkers(pipLineSeries, updated);
+                        tacticalHoverState.time = param.time;
+                    }
+                } else {
+                    if (tacticalHoverState.time !== null) {
+                        createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
                             const { text, ...rest } = m;
                             return rest;
-                        }
-                    });
-                    createSeriesMarkers(pipLineSeries, updated);
-                    tacticalHoverState.time = param.time;
-                } else if (!pip && tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
-                        const { text, ...rest } = m;
-                        return rest;
-                    }));
-                    tacticalHoverState.time = null;
+                        }));
+                        tacticalHoverState.time = null;
+                    }
                 }
             }
 
-            if (!param.time) {
-                currentStockChart.clearCrosshairPosition();
-            } else {
-                currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries);
-            }
+            // Sync back to K-line
+            isSyncing = true;
+            try {
+                if (!param || !param.time) {
+                    currentStockChart.clearCrosshairPosition();
+                } else {
+                    currentStockChart.setCrosshairPosition(0, param.time, candlestickSeries);
+                }
+            } catch(e) {}
+            isSyncing = false;
         });
 
-        // Fallback for tactical chart
-        const pipChartContainer = document.getElementById('pipChart');
-        if (pipChartContainer) {
-            pipChartContainer.addEventListener('mouseleave', () => {
-                if (tacticalHoverState.time !== null) {
-                    createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
-                        const { text, ...rest } = m;
-                        return rest;
-                    }));
-                    tacticalHoverState.time = null;
-                }
-            });
+        // Fallback for tactical chart mouseleave
+        window._pipMouseLeaveHandler = () => {
+            if (tacticalHoverState.time !== null) {
+                createSeriesMarkers(pipLineSeries, tacticalPipMarkers.map(m => {
+                    const { text, ...rest } = m;
+                    return rest;
+                }));
+                tacticalHoverState.time = null;
+            }
+        };
+        if (pipContainer) {
+            pipContainer.addEventListener('mouseleave', window._pipMouseLeaveHandler);
         }
 
         window.allTacticalPips = allPips; // Set initial reference
@@ -4374,7 +4401,6 @@ function resizeAllCharts() {
         if (el && el.clientWidth > 0 && el.clientHeight > 0) {
             try {
                 currentStockChart.resize(el.clientWidth, el.clientHeight);
-                currentStockChart.timeScale().fitContent();
             } catch(e) {
                 console.warn('[RESIZE] K-Line resize failed:', e);
             }
@@ -4386,7 +4412,6 @@ function resizeAllCharts() {
         if (el && el.clientWidth > 0 && el.clientHeight > 0) {
             try {
                 rsiChart.resize(el.clientWidth, el.clientHeight);
-                rsiChart.timeScale().fitContent();
             } catch(e) {
                 console.warn('[RESIZE] RSI resize failed:', e);
             }
@@ -4398,7 +4423,6 @@ function resizeAllCharts() {
         if (el && el.clientWidth > 0 && el.clientHeight > 0) {
             try {
                 pipChartInstance.resize(el.clientWidth, el.clientHeight);
-                pipChartInstance.timeScale().fitContent();
             } catch(e) {
                 console.warn('[RESIZE] PIP resize failed:', e);
             }
@@ -4456,7 +4480,6 @@ function switchSubchart(tabName) {
             setTimeout(() => {
                 const el = document.getElementById('stockChart');
                 if (el) currentStockChart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
-                currentStockChart.timeScale().fitContent();
             }, 50);
         }
 
@@ -4475,7 +4498,10 @@ function switchSubchart(tabName) {
         if (rsiBtn) rsiBtn.classList.add('active');
         // Trigger RSI chart resize after panel becomes visible
         setTimeout(() => {
-            if (currentStockChart) currentStockChart.timeScale().fitContent();
+            if (rsiChart) {
+                const el = document.getElementById('rsiChart');
+                if (el) rsiChart.resize(el.clientWidth, el.clientHeight);
+            }
         }, 80);
 
     } else if (tabName === 'pip') {
