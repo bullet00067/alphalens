@@ -270,13 +270,31 @@ export const App: React.FC = () => {
           const trendRes = analyzeTrend(pips, result.candles);
 
           // Find peaks & troughs to calculate support & resistance
-          const peaks = pips.filter(p => p.type === 'high').map(p => p.value).sort((a, b) => b - a);
-          const troughs = pips.filter(p => p.type === 'low').map(p => p.value).sort((a, b) => a - b);
+          // To make support and resistance realistic and close to the current price range:
+          // We filter peaks that are above or very close to currentPrice, and troughs that are below or very close to currentPrice,
+          // then select the most recent ones chronologically (which are at the end of the PIP arrays).
+          const allPeaks = pips.filter(p => p.type === 'high').map(p => p.value);
+          const allTroughs = pips.filter(p => p.type === 'low').map(p => p.value);
 
-          const r1 = peaks[0] || currentPrice * 1.05;
-          const r2 = peaks[1] || r1 * 1.05;
-          const s1 = troughs[0] || currentPrice * 0.95;
-          const s2 = troughs[1] || s1 * 0.95;
+          // Find recent peaks above currentPrice (within a 1% buffer)
+          const upperPeaks = allPeaks.filter(val => val > currentPrice * 0.99);
+          const p1 = upperPeaks[upperPeaks.length - 1] || currentPrice * 1.05;
+          const p2 = upperPeaks[upperPeaks.length - 2] || p1 * 1.05;
+          let r1 = Math.min(p1, p2);
+          let r2 = Math.max(p1, p2);
+          if (r1 === r2) {
+            r2 = r1 * 1.05;
+          }
+
+          // Find recent troughs below currentPrice (within a 1% buffer)
+          const lowerTroughs = allTroughs.filter(val => val < currentPrice * 1.01);
+          const t1 = lowerTroughs[lowerTroughs.length - 1] || currentPrice * 0.95;
+          const t2 = lowerTroughs[lowerTroughs.length - 2] || t1 * 0.95;
+          let s1 = Math.max(t1, t2);
+          let s2 = Math.min(t1, t2);
+          if (s1 === s2) {
+            s2 = s1 * 0.95;
+          }
 
           const trendDiag: TrendDiagnosis = {
             status: trendRes.status === 'BULLISH' ? '多頭格局，走勢偏強' : trendRes.status === 'BEARISH' ? '空頭格局，震盪築底' : '區間震盪，方向確認中',
