@@ -255,13 +255,60 @@ export const App: React.FC = () => {
         const currentPrice = result.quote.c;
 
         if (plan) {
-          // Preset plans will just dynamically update the current Price
+          // Preset plans will dynamically scale all levels and strategy parameters to match currentPrice
+          const defaultPrice = plan.levels.currentPrice || currentPrice;
+          const ratio = currentPrice / defaultPrice;
+
+          const scaledLevels: KeyLevels = {
+            ...plan.levels,
+            currentPrice,
+            resistance1: Math.round(plan.levels.resistance1 * ratio),
+            resistance2: Math.round(plan.levels.resistance2 * ratio),
+            support1: Math.round(plan.levels.support1 * ratio),
+            support2: Math.round(plan.levels.support2 * ratio),
+            strongSupport: plan.levels.strongSupport ? Math.round(plan.levels.strongSupport * ratio) : undefined
+          };
+
+          // Helper to scale currency price numbers (3-4 digits) in text descriptions
+          const scaleTextNumbers = (text: string, r: number) => {
+            if (!text) return '';
+            return text.replace(/\b\d{3,4}\b/g, (match) => {
+              const val = parseFloat(match);
+              return Math.round(val * r).toString();
+            });
+          };
+
+          const scaledBullish: StrategyCondition = {
+            condition: scaleTextNumbers(plan.bullishStrategy.condition, ratio),
+            entryRange: scaleTextNumbers(plan.bullishStrategy.entryRange, ratio),
+            stopLoss: Math.round(plan.bullishStrategy.stopLoss * ratio),
+            targets: plan.bullishStrategy.targets.map(t => Math.round(t * ratio)),
+            exitStrategies: {
+              takeProfit: scaleTextNumbers(plan.bullishStrategy.exitStrategies.takeProfit, ratio),
+              trailingStop: scaleTextNumbers(plan.bullishStrategy.exitStrategies.trailingStop || '', ratio),
+              timeExit: scaleTextNumbers(plan.bullishStrategy.exitStrategies.timeExit || '', ratio),
+              reversalExit: scaleTextNumbers(plan.bullishStrategy.exitStrategies.reversalExit || '', ratio)
+            }
+          };
+
+          const scaledBearish: StrategyCondition = {
+            condition: scaleTextNumbers(plan.bearishStrategy.condition, ratio),
+            entryRange: scaleTextNumbers(plan.bearishStrategy.entryRange, ratio),
+            stopLoss: Math.round(plan.bearishStrategy.stopLoss * ratio),
+            targets: plan.bearishStrategy.targets.map(t => Math.round(t * ratio)),
+            exitStrategies: {
+              takeProfit: scaleTextNumbers(plan.bearishStrategy.exitStrategies.takeProfit, ratio),
+              trailingStop: scaleTextNumbers(plan.bearishStrategy.exitStrategies.trailingStop || '', ratio),
+              timeExit: scaleTextNumbers(plan.bearishStrategy.exitStrategies.timeExit || '', ratio),
+              reversalExit: scaleTextNumbers(plan.bearishStrategy.exitStrategies.reversalExit || '', ratio)
+            }
+          };
+
           const updatedPlan = {
             ...plan,
-            levels: {
-              ...plan.levels,
-              currentPrice
-            }
+            levels: scaledLevels,
+            bullishStrategy: scaledBullish,
+            bearishStrategy: scaledBearish
           };
           setCurrentPlan(updatedPlan);
         } else {
