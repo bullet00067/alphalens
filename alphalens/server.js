@@ -1,6 +1,10 @@
-const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
-const path = require('path');
+import express from 'express';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,10 +45,10 @@ app.use('/yahoo', createProxyMiddleware({
     }
 }));
 
-// 3. Serve static files from the 'dist' directory
+// 4. Serve static files from the 'dist' directory
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// 4. Fallback to index.html for SPA routing
+// 5. Fallback to index.html for SPA routing
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
