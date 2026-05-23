@@ -305,8 +305,15 @@ export const App: React.FC = () => {
             }
           };
 
+          const scaledTrend: TrendDiagnosis = {
+            status: scaleTextNumbers(plan.trend.status, ratio),
+            position: scaleTextNumbers(plan.trend.position, ratio),
+            conclusion: scaleTextNumbers(plan.trend.conclusion, ratio)
+          };
+
           const updatedPlan = {
             ...plan,
+            trend: scaledTrend,
             levels: scaledLevels,
             bullishStrategy: scaledBullish,
             bearishStrategy: scaledBearish
