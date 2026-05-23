@@ -11,7 +11,7 @@ import {
   LineData,
   IPriceLine
 } from 'lightweight-charts';
-import { Candle, findPIPs } from '../utils/strategyEngine';
+import { Candle, findPIPs, calculateATR, calculateADX } from '../utils/strategyEngine';
 import { KeyLevels, StrategyCondition } from '../types/trading';
 import { cleanTwTicker, formatCompactNumber } from '../utils/api';
 
@@ -45,6 +45,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   const pipSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const bullishProjSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const bearishProjSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bullishUpperSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bullishLowerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bearishUpperSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const bearishLowerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   // Active price lines tracking to prevent stacking and memory leaks
   const priceLinesRef = useRef<IPriceLine[]>([]);
@@ -216,6 +220,24 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     });
     bullishProjSeriesRef.current = bullishProjSeries;
 
+    const bullishUpperSeries = chart.addSeries(LineSeries, {
+      color: 'rgba(234, 179, 8, 0.15)', // Tailwind yellow-500 at 15% opacity
+      lineWidth: 1,
+      lineStyle: 3, // Dotted
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    bullishUpperSeriesRef.current = bullishUpperSeries;
+
+    const bullishLowerSeries = chart.addSeries(LineSeries, {
+      color: 'rgba(234, 179, 8, 0.15)',
+      lineWidth: 1,
+      lineStyle: 3, // Dotted
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    bullishLowerSeriesRef.current = bullishLowerSeries;
+
     const bearishProjSeries = chart.addSeries(LineSeries, {
       color: '#10b981', // Tailwind emerald-500
       lineWidth: 2,
@@ -225,30 +247,139 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     });
     bearishProjSeriesRef.current = bearishProjSeries;
 
+    const bearishUpperSeries = chart.addSeries(LineSeries, {
+      color: 'rgba(16, 185, 129, 0.15)', // Tailwind emerald-500 at 15% opacity
+      lineWidth: 1,
+      lineStyle: 3, // Dotted
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    bearishUpperSeriesRef.current = bearishUpperSeries;
+
+    const bearishLowerSeries = chart.addSeries(LineSeries, {
+      color: 'rgba(16, 185, 129, 0.15)',
+      lineWidth: 1,
+      lineStyle: 3, // Dotted
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    bearishLowerSeriesRef.current = bearishLowerSeries;
+
     const lastCandle = candles[candles.length - 1];
     const futureTimes = getFutureDates(lastCandle.time as string, 12);
 
+    // Calculate dynamic price-volume indicators for modulation
+    const volPeriod = Math.min(20, candles.length);
+    const avgVol = candles.slice(-volPeriod).reduce((sum, c) => sum + c.volume, 0) / volPeriod || 1;
+    const rvol = lastCandle.volume / avgVol;
+    const adx = calculateADX(candles, 14);
+    const atr = calculateATR(candles, 14) || lastCandle.close * 0.02;
+
+    // Standard deviation volatility baseline (scaled by rolling ATR)
+    const sigma0 = Math.max(lastCandle.close * 0.015, atr * 1.2);
+
+    // Helper functions to interpolate N-wave and inverted N-wave values dynamically
+    const getBullishPriceAt = (t: number, startPrice: number, breakoutPrice: number, pullbackPrice: number, finalPrice: number): number => {
+      if (t <= 2) {
+        return startPrice + (breakoutPrice - startPrice) * ((t + 1) / 3);
+      } else if (t <= 6) {
+        return breakoutPrice + (pullbackPrice - breakoutPrice) * ((t - 2) / 4);
+      } else {
+        return pullbackPrice + (finalPrice - pullbackPrice) * ((t - 6) / 5);
+      }
+    };
+
+    const getBearishPriceAt = (t: number, startPrice: number, breakdownPrice: number, bouncePrice: number, finalPrice: number): number => {
+      if (t <= 2) {
+        return startPrice + (breakdownPrice - startPrice) * ((t + 1) / 3);
+      } else if (t <= 6) {
+        return breakdownPrice + (bouncePrice - breakdownPrice) * ((t - 2) / 4);
+      } else {
+        return bouncePrice + (finalPrice - bouncePrice) * ((t - 6) / 5);
+      }
+    };
+
     if (activeProjection === 'bullish') {
-      const bullishData: LineData[] = [
-        { time: lastCandle.time as string, value: lastCandle.close },
-        { time: futureTimes[2], value: bullishStrategy.entryRange ? parseFloat(bullishStrategy.entryRange.split('-')[0]) || lastCandle.close : levels.resistance1 },
-        { time: futureTimes[6], value: bullishStrategy.targets[0] || levels.resistance2 },
-        { time: futureTimes[11], value: bullishStrategy.targets[1] || (levels.resistance2 * 1.05) },
-      ];
+      const startPrice = lastCandle.close;
+      const breakoutPrice = bullishStrategy.targets[0] || levels.resistance1 || (startPrice * 1.05);
+      
+      // Pullback is shallow in high-volume breakouts, deeper in low-volume consolidations
+      const isHighVolumeBreakout = adx > 22 && rvol > 1.3;
+      let pullbackPrice = isHighVolumeBreakout 
+        ? breakoutPrice - (breakoutPrice - startPrice) * 0.25 
+        : breakoutPrice - (breakoutPrice - startPrice) * 0.618;
+      
+      // Guard pullbackPrice so it does not drop below key support levels
+      const stopLossLimit = bullishStrategy.stopLoss || levels.support1 || (startPrice * 0.95);
+      pullbackPrice = Math.max(stopLossLimit, pullbackPrice);
+
+      const finalPrice = Math.max(bullishStrategy.targets[1] || levels.resistance2 * 1.08, breakoutPrice * 1.02);
+
+      // Generate daily path data points for smooth line rendering and volatility cone overlay
+      const bullishData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+      const upperData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+      const lowerData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+
+      for (let t = 0; t < futureTimes.length; t++) {
+        const centerPrice = getBullishPriceAt(t, startPrice, breakoutPrice, pullbackPrice, finalPrice);
+        const halfWidth = sigma0 * Math.sqrt(t + 1) * 1.5; // +/- 1.5 standard deviation width
+        
+        bullishData.push({ time: futureTimes[t], value: centerPrice });
+        upperData.push({ time: futureTimes[t], value: centerPrice + halfWidth });
+        lowerData.push({ time: futureTimes[t], value: centerPrice - halfWidth });
+      }
+
       bullishProjSeries.setData(bullishData);
+      bullishUpperSeries.setData(upperData);
+      bullishLowerSeries.setData(lowerData);
+
       bearishProjSeries.setData([]);
+      bearishUpperSeries.setData([]);
+      bearishLowerSeries.setData([]);
     } else if (activeProjection === 'bearish') {
-      const bearishData: LineData[] = [
-        { time: lastCandle.time as string, value: lastCandle.close },
-        { time: futureTimes[2], value: bearishStrategy.entryRange ? parseFloat(bearishStrategy.entryRange.split('-')[0]) || lastCandle.close : levels.support1 },
-        { time: futureTimes[6], value: bearishStrategy.targets[0] || levels.support2 },
-        { time: futureTimes[11], value: bearishStrategy.targets[1] || (levels.support2 * 0.95) },
-      ];
+      const startPrice = lastCandle.close;
+      const breakdownPrice = bearishStrategy.targets[0] || levels.support1 || (startPrice * 0.95);
+      
+      // Bounce is shallow in strong bearish trends, higher in low-volume/consolidation trends
+      const isStrongBearishTrend = adx > 22;
+      let bouncePrice = isStrongBearishTrend 
+        ? breakdownPrice + (startPrice - breakdownPrice) * 0.2 
+        : breakdownPrice + (startPrice - breakdownPrice) * 0.5;
+
+      // Guard bouncePrice from exceeding bearish stop loss levels
+      const bearishStopLimit = bearishStrategy.stopLoss || levels.resistance1 || (startPrice * 1.05);
+      bouncePrice = Math.min(bearishStopLimit, bouncePrice);
+
+      const finalPrice = Math.min(bearishStrategy.targets[1] || levels.support2 * 0.92, breakdownPrice * 0.98);
+
+      // Generate daily path data points for smooth line rendering and volatility cone overlay
+      const bearishData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+      const upperData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+      const lowerData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+
+      for (let t = 0; t < futureTimes.length; t++) {
+        const centerPrice = getBearishPriceAt(t, startPrice, breakdownPrice, bouncePrice, finalPrice);
+        const halfWidth = sigma0 * Math.sqrt(t + 1) * 1.5; // +/- 1.5 standard deviation width
+        
+        bearishData.push({ time: futureTimes[t], value: centerPrice });
+        upperData.push({ time: futureTimes[t], value: centerPrice + halfWidth });
+        lowerData.push({ time: futureTimes[t], value: centerPrice - halfWidth });
+      }
+
       bearishProjSeries.setData(bearishData);
+      bearishUpperSeries.setData(upperData);
+      bearishLowerSeries.setData(lowerData);
+
       bullishProjSeries.setData([]);
+      bullishUpperSeries.setData([]);
+      bullishLowerSeries.setData([]);
     } else {
       bullishProjSeries.setData([]);
+      bullishUpperSeries.setData([]);
+      bullishLowerSeries.setData([]);
       bearishProjSeries.setData([]);
+      bearishUpperSeries.setData([]);
+      bearishLowerSeries.setData([]);
     }
 
     // E. Add Level price lines
