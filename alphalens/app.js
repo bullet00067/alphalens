@@ -2328,7 +2328,22 @@ function renderTradingViewChart(data) {
     const chartGridColor = isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.05)';
     const chartBorderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)';
 
+    // Explicitly compute rendered dimensions or fall back to responsive defaults (resolves mobile height collapse)
+    const initialWidth = chartContainer.clientWidth || 800;
+    let initialHeight = chartContainer.clientHeight || 350;
+    if (initialHeight <= 0) {
+        if (window.innerWidth <= 768) {
+            initialHeight = 280; // Mobile portrait fallback
+        } else if (window.innerWidth <= 1024) {
+            initialHeight = window.innerHeight > window.innerWidth ? 300 : 220; // Mobile landscape fallback
+        } else {
+            initialHeight = 350;
+        }
+    }
+
     currentStockChart = createChart(chartContainer, {
+        width: initialWidth,
+        height: initialHeight,
         layout: { background: { type: 'solid', color: 'transparent' }, textColor: chartTextColor },
         grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
         crosshair: { mode: CrosshairMode.Normal },
@@ -2868,7 +2883,16 @@ function toggleRSI(active, period = 14) {
     const chartGridColor = isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.03)';
     const chartBorderColor = isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)';
 
+    // Explicitly compute rendered dimensions or fall back to responsive defaults (resolves mobile height collapse)
+    const initialRsiWidth = rsiContainer.clientWidth || 800;
+    let initialRsiHeight = rsiContainer.clientHeight || 150;
+    if (initialRsiHeight <= 0) {
+        initialRsiHeight = window.innerWidth <= 768 ? 120 : 150;
+    }
+
     rsiChart = createChart(rsiContainer, {
+        width: initialRsiWidth,
+        height: initialRsiHeight,
         layout: { background: { type: 'solid', color: 'transparent' }, textColor: chartTextColor, fontSize: 10 },
         grid: { vertLines: { color: chartGridColor }, horzLines: { color: chartGridColor } },
         rightPriceScale: { 
@@ -4566,7 +4590,9 @@ function switchSubchart(tabName) {
         if (currentStockChart) {
             setTimeout(() => {
                 const el = document.getElementById('stockChart');
-                if (el) currentStockChart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+                if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+                    try { currentStockChart.resize(el.clientWidth, el.clientHeight); } catch(e) {}
+                }
             }, 50);
         }
 
