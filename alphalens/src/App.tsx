@@ -236,6 +236,15 @@ export const App: React.FC = () => {
         // 1. If it's a predefined plan, load the core specifications out-of-the-box
         const cleanSym = cleanTwTicker(normalized);
         let plan = PREDEFINED_PLANS[cleanSym] || PREDEFINED_PLANS[normalized];
+        if (!plan) {
+          const planKey = Object.keys(PREDEFINED_PLANS).find(k => {
+            const p = PREDEFINED_PLANS[k];
+            return cleanTwTicker(p.ticker) === cleanSym;
+          });
+          if (planKey) {
+            plan = PREDEFINED_PLANS[planKey];
+          }
+        }
 
         // 2. Fetch candle data and quotes
         const result = await fetchStockHistoryCached(normalized, '1day');

@@ -160,7 +160,7 @@ function pipNumByMse(pipVdSumArray: number[]): number {
 export function findPIPs(candles: Candle[], useCache = true): PipPoint[] {
   if (!candles || candles.length < 5) return [];
 
-  const cacheKey = `${candles[0].time}-${candles[candles.length - 1].time}-${candles.length}`;
+  const cacheKey = `${candles[0].time}-${candles[candles.length - 1].time}-${candles.length}-${candles[0].close.toFixed(2)}-${candles[candles.length - 1].close.toFixed(2)}`;
   if (useCache && pipCache.has(cacheKey)) {
     return pipCache.get(cacheKey)!;
   }
