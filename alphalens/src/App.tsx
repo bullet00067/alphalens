@@ -15,7 +15,7 @@ import {
   getTaiwanStockName,
   getQuickQuote
 } from './utils/api';
-import { findPIPs, analyzeTrend, generatePIPSignal } from './utils/strategyEngine';
+import { findPIPs, analyzeTrend, generatePIPSignal, calculateATR } from './utils/strategyEngine';
 
 // Pre-defined plans
 const PREDEFINED_PLANS: Record<string, TradingPlanData> = {
@@ -253,6 +253,7 @@ export const App: React.FC = () => {
         setStockHistory(result);
 
         const currentPrice = result.quote.c;
+        const atr = calculateATR(result.candles, 14);
 
         if (plan) {
           // Preset plans will dynamically scale all levels and strategy parameters to match currentPrice
@@ -285,7 +286,7 @@ export const App: React.FC = () => {
             targets: plan.bullishStrategy.targets.map(t => Math.round(t * ratio)),
             exitStrategies: {
               takeProfit: scaleTextNumbers(plan.bullishStrategy.exitStrategies.takeProfit, ratio),
-              trailingStop: scaleTextNumbers(plan.bullishStrategy.exitStrategies.trailingStop || '', ratio),
+              trailingStop: `${scaleTextNumbers(plan.bullishStrategy.exitStrategies.trailingStop || '', ratio)} (波動 ATR: ${atr.toFixed(1)})`,
               timeExit: scaleTextNumbers(plan.bullishStrategy.exitStrategies.timeExit || '', ratio),
               reversalExit: scaleTextNumbers(plan.bullishStrategy.exitStrategies.reversalExit || '', ratio)
             }
@@ -298,7 +299,7 @@ export const App: React.FC = () => {
             targets: plan.bearishStrategy.targets.map(t => Math.round(t * ratio)),
             exitStrategies: {
               takeProfit: scaleTextNumbers(plan.bearishStrategy.exitStrategies.takeProfit, ratio),
-              trailingStop: scaleTextNumbers(plan.bearishStrategy.exitStrategies.trailingStop || '', ratio),
+              trailingStop: `${scaleTextNumbers(plan.bearishStrategy.exitStrategies.trailingStop || '', ratio)} (波動 ATR: ${atr.toFixed(1)})`,
               timeExit: scaleTextNumbers(plan.bearishStrategy.exitStrategies.timeExit || '', ratio),
               reversalExit: scaleTextNumbers(plan.bearishStrategy.exitStrategies.reversalExit || '', ratio)
             }
@@ -364,7 +365,7 @@ export const App: React.FC = () => {
             targets: [r2, r2 * 1.1],
             exitStrategies: {
               takeProfit: '目標一減碼，目標二全出',
-              trailingStop: '跌破 5MA 出場',
+              trailingStop: `跌破 Chandelier Exit 軌道線 $${(currentPrice - 2.5 * atr).toFixed(1)} (波動 ATR: ${atr.toFixed(1)})`,
               timeExit: '3 日內未脫離成本區出場'
             }
           };
@@ -376,7 +377,7 @@ export const App: React.FC = () => {
             targets: [s2, s2 * 0.9],
             exitStrategies: {
               takeProfit: '目標一回補，目標二全出',
-              trailingStop: '突破 10MA 回補',
+              trailingStop: `突破 Chandelier Exit 軌道線 $${(currentPrice + 2.5 * atr).toFixed(1)} (波動 ATR: ${atr.toFixed(1)})`,
               timeExit: '3 日內未脫離成本區出場'
             }
           };

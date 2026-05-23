@@ -105,6 +105,66 @@ export function calculateATR(candles: Candle[], period = 14): number {
 }
 
 /**
+ * Calculate Average Directional Index (ADX) using Wilder's DMI smoothing
+ */
+export function calculateADX(candles: Candle[], period = 14): number {
+  if (candles.length < period * 2) return 20; // Default baseline if data is sparse
+  
+  const trs: number[] = [];
+  const plusDMs: number[] = [];
+  const minusDMs: number[] = [];
+  
+  for (let i = 1; i < candles.length; i++) {
+    const h = candles[i].high;
+    const l = candles[i].low;
+    const ph = candles[i - 1].high;
+    const pl = candles[i - 1].low;
+    const pc = candles[i - 1].close;
+    
+    const tr = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+    trs.push(tr);
+    
+    const plusDM = (h - ph > pl - l && h - ph > 0) ? h - ph : 0;
+    const minusDM = (pl - l > h - ph && pl - l > 0) ? pl - l : 0;
+    plusDMs.push(plusDM);
+    minusDMs.push(minusDM);
+  }
+  
+  // Smoothed averages
+  let trSmoothed = trs.slice(0, period).reduce((a, b) => a + b, 0);
+  let plusDMSmoothed = plusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+  let minusDMSmoothed = minusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+  
+  const dxs: number[] = [];
+  
+  // Wilder's smoothing method
+  for (let i = period; i < trs.length; i++) {
+    trSmoothed = trSmoothed - (trSmoothed / period) + trs[i];
+    plusDMSmoothed = plusDMSmoothed - (plusDMSmoothed / period) + plusDMs[i];
+    minusDMSmoothed = minusDMSmoothed - (minusDMSmoothed / period) + minusDMs[i];
+    
+    const plusDI = trSmoothed > 0 ? (plusDMSmoothed / trSmoothed) * 100 : 0;
+    const minusDI = trSmoothed > 0 ? (minusDMSmoothed / trSmoothed) * 100 : 0;
+    
+    const sumDI = plusDI + minusDI;
+    const diffDI = Math.abs(plusDI - minusDI);
+    const dx = sumDI > 0 ? (diffDI / sumDI) * 100 : 0;
+    dxs.push(dx);
+  }
+  
+  if (dxs.length < period) return 20;
+  
+  // Initial ADX
+  let adx = dxs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < dxs.length; i++) {
+    adx = ((adx * (period - 1)) + dxs[i]) / period;
+  }
+  
+  return adx;
+}
+
+
+/**
  * Calculate vertical distance between a point and a line segment
  */
 export function calcVerticalDistance(
@@ -303,21 +363,31 @@ export function evaluateEntry(candles: Candle[], pips: PipPoint[], trend: TrendR
   const current = candles[candles.length - 1];
   const prev = candles[candles.length - 2];
 
+  // Calculate Relative Volume (RVOL) over 20-day Simple Moving Average
+  const volPeriod = Math.min(20, candles.length);
+  const avgVol = candles.slice(-volPeriod).reduce((sum, c) => sum + c.volume, 0) / volPeriod || 1;
+  const rvol = current.volume / avgVol;
+
+  // Calculate ADX Trend Strength
+  const adx = calculateADX(candles, 14);
+
   if (trend.status === 'CONSOLIDATION' && trend.peaks.length > 0) {
     const neckline = trend.peaks[trend.peaks.length - 1].value;
-    const volumeTarget = prev.volume * 1.3;
     const isRedK = current.close > current.open;
 
-    if (current.close > neckline && current.volume > volumeTarget && isRedK) {
-      return { type: 'ENTRY_A', price: current.close, reason: '盤整突破' };
+    // Breakout requires RVOL > 1.5 (institutional volume) and healthy ADX baseline
+    if (current.close > neckline && rvol > 1.5 && adx > 18 && isRedK) {
+      return { type: 'ENTRY_A', price: current.close, reason: `盤整突破 (ADX: ${adx.toFixed(1)}, RVOL: ${rvol.toFixed(1)}x)` };
     }
   }
 
   if (trend.status === 'BULLISH' && trend.troughs.length > 0) {
     const lastTrough = trend.troughs[trend.troughs.length - 1].value;
     const isRedK = current.close > current.open;
-    if (current.low > lastTrough && isRedK && current.close > prev.close) {
-      return { type: 'ENTRY_B', price: current.close, reason: '回後買上漲' };
+    
+    // Pullback requires a strong trending market (ADX > 22)
+    if (current.low > lastTrough && isRedK && current.close > prev.close && adx > 22) {
+      return { type: 'ENTRY_B', price: current.close, reason: `回後買上漲 (ADX: ${adx.toFixed(1)})` };
     }
   }
 

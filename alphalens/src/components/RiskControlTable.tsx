@@ -7,6 +7,8 @@ interface RiskControlTableProps {
 }
 
 export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bearish }) => {
+  const [capital, setCapital] = React.useState<number>(1000000);
+  const [riskPercent, setRiskPercent] = React.useState<number>(1.0);
   
   // Parse numeric trigger entry price from entry range string (e.g. "585 - 590" -> 585)
   const parseEntryPrice = (rangeStr: string): number => {
@@ -49,6 +51,24 @@ export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bea
   const renderRow = (strategy: StrategyCondition, isBullish: boolean) => {
     const { rr, label } = calculateRR(strategy, isBullish);
     const entry = parseEntryPrice(strategy.entryRange);
+    const sl = strategy.stopLoss;
+    
+    // Calculate suggested shares based on risk formula:
+    // Risk per share = Math.abs(entry - stopLoss)
+    // Total risk capital = capital * (riskPercent / 100)
+    // Suggested shares = Total risk capital / Risk per share
+    const riskPerShare = Math.abs(entry - sl);
+    const totalRiskCapital = capital * (riskPercent / 100);
+    const suggestedShares = riskPerShare > 0 ? Math.floor(totalRiskCapital / riskPerShare) : 0;
+    
+    // Format suggested shares to "張 + 股"
+    const suggestedText = suggestedShares > 0
+      ? suggestedShares >= 1000
+        ? `${Math.floor(suggestedShares / 1000)} 張 ${suggestedShares % 1000} 股`
+        : `${suggestedShares} 股`
+      : '0 股';
+
+    const maxLossText = `最大虧損限制: $${Math.round(totalRiskCapital).toLocaleString()}`;
     
     // High contrast badges: >= 2:1 gets high contrast emerald border, otherwise amber or slate
     const badgeStyle = rr >= 2
@@ -87,6 +107,16 @@ export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bea
             {label}
           </span>
         </td>
+        <td className="px-6 py-4.5 whitespace-nowrap text-left">
+          <div className="flex flex-col">
+            <span className="text-sm font-black font-mono text-amber-400">
+              {suggestedText}
+            </span>
+            <span className="text-[10px] text-slate-500 font-semibold">
+              ({suggestedShares.toLocaleString()} 股 / {maxLossText})
+            </span>
+          </div>
+        </td>
         <td className="px-6 py-4.5 text-left text-xs font-medium text-slate-400 leading-normal max-w-xs truncate">
           {strategy.exitStrategies.takeProfit}
         </td>
@@ -109,6 +139,43 @@ export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bea
         </div>
       </div>
 
+      {/* Capital Allocation & Risk Parameters Panel */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 p-4.5 rounded-2xl bg-slate-950/40 border border-slate-850/60">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+            <i className="fa-solid fa-wallet text-amber-500"></i>
+            交易帳戶總資金 (TWD)
+          </label>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm font-semibold">$</span>
+            <input
+              type="number"
+              value={capital}
+              onChange={(e) => setCapital(Math.max(0, parseFloat(e.target.value) || 0))}
+              className="w-full pl-8 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 font-mono text-sm font-bold focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
+              placeholder="請輸入總資金"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+            <i className="fa-solid fa-triangle-exclamation text-rose-500"></i>
+            單筆交易最大承受風險 (%)
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.1"
+              value={riskPercent}
+              onChange={(e) => setRiskPercent(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+              className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 font-mono text-sm font-bold focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all"
+              placeholder="例如 1.0"
+            />
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-mono text-sm font-semibold">%</span>
+          </div>
+        </div>
+      </div>
+
       {/* Table */}
       <div className="w-full overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/20">
         <table className="min-w-full divide-y divide-slate-800">
@@ -128,6 +195,9 @@ export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bea
               </th>
               <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                 預估盈虧比 (R:R Ratio)
+              </th>
+              <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
+                建議交易量 (Shares)
               </th>
               <th className="px-6 py-3.5 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">
                 出場停利說明
