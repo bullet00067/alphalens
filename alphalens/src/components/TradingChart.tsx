@@ -496,14 +496,15 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       subchartSeriesRef.current = pipSeries;
 
       const pips = findPIPs(candles);
-      const pipData: LineData[] = pips.map(p => {
-        const stdY = (Math.log10(p.value) - mean) / std;
+      const pipData: LineData[] = candles.map(c => {
+        const stdY = (Math.log10(c.close) - mean) / std;
         return {
-          time: p.time as string,
+          time: c.time as string,
           value: stdY,
         };
       });
       pipSeries.setData(pipData);
+
 
       // Add Z-score standard bounds lines
       pipSeries.createPriceLine({

@@ -419,67 +419,69 @@ export async function fetchTwseFallbackCandles(ticker: string, tf = '1day'): Pro
  * TW Stock FinMind Master Flow with fallbacks
  */
 export async function fetchTwseCandles(ticker: string, tf: string): Promise<StockDataResult> {
+  // Prioritize Yahoo Finance for complete, up-to-date, untruncated daily K-lines
   try {
-    const twTicker = cleanTwTicker(ticker);
-    const end = new Date();
-    const start = new Date();
-    start.setFullYear(end.getFullYear() - 3);
-
-    const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`;
-    const data = await fetchWithProxy(url);
-
-    if (!data.data || data.data.length === 0 || data.status === 402) {
-      throw new Error("FinMind rate limited or empty data");
-    }
-
-    const candles: Candle[] = data.data.map((d: any) => ({
-      time: d.date,
-      open: d.open,
-      high: d.max,
-      low: d.min,
-      close: d.close,
-      volume: d.Trading_Volume
-    }));
-
-    const name = await getTaiwanStockName(twTicker) || ticker;
-    const latest = candles[candles.length - 1];
-    const quote = {
-      c: latest.close,
-      d: 0,
-      dp: 0,
-      h: latest.high,
-      l: latest.low,
-      pc: candles[candles.length - 2]?.close || latest.open
-    };
-
-    let marketCapitalization = null;
+    return await fetchYahooFallbackCandles(ticker, tf);
+  } catch (yahooErr) {
+    console.warn("Yahoo Finance failed, falling back to FinMind:", yahooErr);
     try {
-      const shStart = new Date();
-      shStart.setDate(shStart.getDate() - 30);
-      const shUrl = `${FINMIND_BASE}?dataset=TaiwanStockShareholding&data_id=${twTicker}&start_date=${formatDt(shStart)}`;
-      const shData = await fetchWithProxy(shUrl);
-      if (shData && shData.data && shData.data.length > 0) {
-        const validRecords = shData.data.filter((r: any) => r.NumberOfSharesIssued > 0);
-        if (validRecords.length > 0) {
-          const latestSh = validRecords[validRecords.length - 1];
-          marketCapitalization = (latestSh.NumberOfSharesIssued * latest.close) / 1000000;
-        }
+      const twTicker = cleanTwTicker(ticker);
+      const end = new Date();
+      const start = new Date();
+      start.setFullYear(end.getFullYear() - 3);
+
+      const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${twTicker}&start_date=${formatDt(start)}&end_date=${formatDt(end)}`;
+      const data = await fetchWithProxy(url);
+
+      if (!data.data || data.data.length === 0 || data.status === 402) {
+        throw new Error("FinMind rate limited or empty data");
       }
-    } catch (shErr) {
-      console.warn("Failed to fetch shareholding for TW stock market cap:", shErr);
-    }
 
-    return { quote, candles: aggregateCandles(candles, tf), profile: { name, marketCapitalization } };
-  } catch (e) {
-    console.error("FinMind Error, trying Yahoo fallback first, then TWSE fallback:", e);
-    try {
-      return await fetchYahooFallbackCandles(ticker, tf);
-    } catch (yahooErr) {
-      console.error("Yahoo fallback failed too, trying TWSE fallback:", yahooErr);
+      const candles: Candle[] = data.data.map((d: any) => ({
+        time: d.date,
+        open: d.open,
+        high: d.max,
+        low: d.min,
+        close: d.close,
+        volume: d.Trading_Volume
+      }));
+
+      const name = await getTaiwanStockName(twTicker) || ticker;
+      const latest = candles[candles.length - 1];
+      const quote = {
+        c: latest.close,
+        d: 0,
+        dp: 0,
+        h: latest.high,
+        l: latest.low,
+        pc: candles[candles.length - 2]?.close || latest.open
+      };
+
+      let marketCapitalization = null;
+      try {
+        const shStart = new Date();
+        shStart.setDate(shStart.getDate() - 30);
+        const shUrl = `${FINMIND_BASE}?dataset=TaiwanStockShareholding&data_id=${twTicker}&start_date=${formatDt(shStart)}`;
+        const shData = await fetchWithProxy(shUrl);
+        if (shData && shData.data && shData.data.length > 0) {
+          const validRecords = shData.data.filter((r: any) => r.NumberOfSharesIssued > 0);
+          if (validRecords.length > 0) {
+            const latestSh = validRecords[validRecords.length - 1];
+            marketCapitalization = (latestSh.NumberOfSharesIssued * latest.close) / 1000000;
+          }
+        }
+      } catch (shErr) {
+        console.warn("Failed to fetch shareholding for TW stock market cap:", shErr);
+      }
+
+      return { quote, candles: aggregateCandles(candles, tf), profile: { name, marketCapitalization } };
+    } catch (finmindErr) {
+      console.error("FinMind failed too, trying TWSE fallback:", finmindErr);
       return await fetchTwseFallbackCandles(ticker, tf);
     }
   }
 }
+
 
 /**
  * Fetch US Stock data from Finnhub & Twelve Data
@@ -630,9 +632,20 @@ export async function getTaiwanStockName(ticker: string): Promise<string> {
  */
 export async function getQuickQuote(ticker: string): Promise<QuickQuoteResult> {
   if (isTaiwanStock(ticker)) {
-    const cleanTicker = cleanTwTicker(ticker);
+    // 1. Try Yahoo Finance First (for instant real-time price alignment)
+    try {
+      const yahooData = await fetchYahooFallbackCandles(ticker, '1day');
+      return {
+        price: yahooData.quote.c,
+        change: yahooData.quote.d,
+        d: yahooData.quote.dp
+      };
+    } catch (yahooErr) {
+      console.warn("Yahoo failed in getQuickQuote, trying FinMind:", yahooErr);
+    }
 
-    // 1. Try FinMind
+    const cleanTicker = cleanTwTicker(ticker);
+    // 2. Try FinMind
     try {
       const url = `${FINMIND_BASE}?dataset=TaiwanStockPrice&data_id=${cleanTicker}&start_date=${new Date(Date.now() - 86400000 * 5).toISOString().split('T')[0]}`;
       const data = await fetchWithProxy(url);
@@ -646,18 +659,6 @@ export async function getQuickQuote(ticker: string): Promise<QuickQuoteResult> {
       }
     } catch (e) {
       console.warn("FinMind failed in getQuickQuote:", e);
-    }
-
-    // 2. Try Yahoo Finance
-    try {
-      const yahooData = await fetchYahooFallbackCandles(ticker, '1day');
-      return {
-        price: yahooData.quote.c,
-        change: yahooData.quote.d,
-        d: yahooData.quote.dp
-      };
-    } catch (yahooErr) {
-      console.warn("Yahoo failed in getQuickQuote:", yahooErr);
     }
 
     // 3. Try TWSE API
@@ -681,6 +682,7 @@ export async function getQuickQuote(ticker: string): Promise<QuickQuoteResult> {
     return { price: data.c, change: data.d, d: data.dp };
   }
 }
+
 
 /**
  * Fetch general market news
