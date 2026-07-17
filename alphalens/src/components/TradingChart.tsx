@@ -62,18 +62,36 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   // Synchronize visible logical ranges between main chart and subchart
   const isSyncingRef = useRef(false);
 
-  // Helper to generate future dates for projections
-  const getFutureDates = (lastDateStr: string, count: number): string[] => {
-    const dates: string[] = [];
-    let curr = new Date(lastDateStr);
-    if (isNaN(curr.getTime())) {
-      curr = new Date();
+  // Helper to generate future dates for projections (supports both string dates and numeric timestamps)
+  const getFutureDates = (lastDate: string | number, count: number): (string | number)[] => {
+    const dates: (string | number)[] = [];
+    let curr: Date;
+    
+    if (typeof lastDate === 'number') {
+      curr = new Date(lastDate * 1000);
+    } else {
+      curr = new Date(lastDate);
+      if (isNaN(curr.getTime())) {
+        const num = Number(lastDate);
+        if (!isNaN(num)) {
+          curr = new Date(num * 1000);
+        } else {
+          curr = new Date();
+        }
+      }
     }
+
+    const isNumeric = typeof lastDate === 'number';
+
     while (dates.length < count) {
       curr.setDate(curr.getDate() + 1);
       const day = curr.getDay();
       if (day !== 0 && day !== 6) { // skip weekends
-        dates.push(curr.toISOString().split('T')[0]);
+        if (isNumeric) {
+          dates.push(Math.floor(curr.getTime() / 1000));
+        } else {
+          dates.push(curr.toISOString().split('T')[0]);
+        }
       }
     }
     return dates;
@@ -266,7 +284,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     bearishLowerSeriesRef.current = bearishLowerSeries;
 
     const lastCandle = candles[candles.length - 1];
-    const futureTimes = getFutureDates(lastCandle.time as string, 12);
+    const futureTimes = getFutureDates(lastCandle.time, 12);
 
     // Calculate dynamic price-volume indicators for modulation
     const volPeriod = Math.min(20, candles.length);
@@ -316,9 +334,9 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const finalPrice = Math.max(bullishStrategy.targets[1] || levels.resistance2 * 1.08, breakoutPrice * 1.02);
 
       // Generate daily path data points for smooth line rendering and volatility cone overlay
-      const bullishData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
-      const upperData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
-      const lowerData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+      const bullishData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
+      const upperData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
+      const lowerData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
 
       for (let t = 0; t < futureTimes.length; t++) {
         const centerPrice = getBullishPriceAt(t, startPrice, breakoutPrice, pullbackPrice, finalPrice);
@@ -353,9 +371,9 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const finalPrice = Math.min(bearishStrategy.targets[1] || levels.support2 * 0.92, breakdownPrice * 0.98);
 
       // Generate daily path data points for smooth line rendering and volatility cone overlay
-      const bearishData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
-      const upperData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
-      const lowerData: LineData[] = [{ time: lastCandle.time as string, value: startPrice }];
+      const bearishData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
+      const upperData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
+      const lowerData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
 
       for (let t = 0; t < futureTimes.length; t++) {
         const centerPrice = getBearishPriceAt(t, startPrice, breakdownPrice, bouncePrice, finalPrice);
