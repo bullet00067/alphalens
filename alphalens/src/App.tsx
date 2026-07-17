@@ -321,8 +321,10 @@ export const App: React.FC = () => {
           setCurrentPlan(updatedPlan);
         } else {
           // Dynamic calculation: parse PIPs and auto-diagnose trend
-          const pips = findPIPs(result.candles);
-          const trendRes = analyzeTrend(pips, result.candles);
+          // Limit to last 240 trading days (~1 year) to keep support/resistance levels realistic
+          const analysisCandles = result.candles.slice(-240);
+          const pips = findPIPs(analysisCandles);
+          const trendRes = analyzeTrend(pips, analysisCandles);
 
           // Find peaks & troughs to calculate support & resistance
           // To make support and resistance realistic and close to the current price range:

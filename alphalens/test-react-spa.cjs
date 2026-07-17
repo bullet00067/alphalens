@@ -33,9 +33,9 @@ const puppeteer = require('puppeteer');
     });
 
     // 1. Load the dev server URL
-    const targetUrl = 'http://localhost:5174/';
+    const targetUrl = 'http://localhost:5173/';
     console.log(`Connecting to Vite Dev Server at: ${targetUrl}...`);
-    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
     
     console.log("Page loaded successfully.");
     await new Promise(r => setTimeout(r, 2000)); // Bounded wait for charts/API loads
