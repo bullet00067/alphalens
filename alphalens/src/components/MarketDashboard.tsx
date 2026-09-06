@@ -5,6 +5,8 @@ import {
   getTaiwanStockName,
   fetchMarketNews,
   formatCurrency,
+  searchStockSuggestions,
+  resolveTicker,
   MarketNewsItem
 } from '../utils/api';
 
@@ -78,47 +80,55 @@ export const MarketDashboard: React.FC<MarketDashboardProps> = ({
     fetchIndices();
   }, []);
 
-  // Fetch Watchlist details when list changes or market tab changes
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+
+  // Fetch Watchlist details concurrently when list changes or market tab changes
   useEffect(() => {
     let active = true;
     const fetchWatchlistDetails = async () => {
       setLoadingWatchlist(true);
-      const data: typeof watchlistData = {};
 
-      for (const ticker of watchlist) {
-        try {
-          let name = ticker;
-          let price = '...';
-          let change = '...';
-          let isPositive = true;
+      try {
+        const entries = await Promise.all(
+          watchlist.map(async (ticker) => {
+            try {
+              let name = ticker;
+              let price = '...';
+              let change = '...';
+              let isPositive = true;
 
-          if (isTaiwanStock(ticker)) {
-            const twName = await getTaiwanStockName(ticker);
-            name = twName ? `${ticker} ${twName}` : ticker;
-            const quote = await getQuickQuote(ticker);
-            if (quote && quote.price > 0) {
-              price = formatCurrency(quote.price, ticker);
-              isPositive = quote.change >= 0;
-              change = `${isPositive ? '+' : ''}${quote.change.toFixed(2)} (${quote.d.toFixed(2)}%)`;
+              if (isTaiwanStock(ticker)) {
+                const twName = await getTaiwanStockName(ticker);
+                name = twName ? `${ticker} ${twName}` : ticker;
+                const quote = await getQuickQuote(ticker);
+                if (quote && quote.price > 0) {
+                  price = formatCurrency(quote.price, ticker);
+                  isPositive = quote.change >= 0;
+                  change = `${isPositive ? '+' : ''}${quote.change.toFixed(2)} (${quote.d.toFixed(2)}%)`;
+                }
+              } else {
+                const quote = await getQuickQuote(ticker);
+                if (quote && quote.price > 0) {
+                  price = formatCurrency(quote.price, ticker);
+                  isPositive = quote.change >= 0;
+                  change = `${isPositive ? '+' : ''}${quote.change.toFixed(2)} (${quote.d.toFixed(2)}%)`;
+                }
+              }
+
+              return [ticker, { name, price, change, isPositive }] as const;
+            } catch (e) {
+              return [ticker, { name: ticker, price: 'Error', change: 'Failed to fetch', isPositive: false }] as const;
             }
-          } else {
-            const quote = await getQuickQuote(ticker);
-            if (quote && quote.price > 0) {
-              price = formatCurrency(quote.price, ticker);
-              isPositive = quote.change >= 0;
-              change = `${isPositive ? '+' : ''}${quote.change.toFixed(2)} (${quote.d.toFixed(2)}%)`;
-            }
-          }
+          })
+        );
 
-          data[ticker] = { name, price, change, isPositive };
-        } catch (e) {
-          data[ticker] = { name: ticker, price: 'Error', change: 'Failed to fetch', isPositive: false };
+        if (active) {
+          setWatchlistData(Object.fromEntries(entries));
+          setLoadingWatchlist(false);
         }
-      }
-
-      if (active) {
-        setWatchlistData(data);
-        setLoadingWatchlist(false);
+      } catch (err) {
+        console.error("Failed to load watchlist details:", err);
+        if (active) setLoadingWatchlist(false);
       }
     };
 
@@ -131,10 +141,21 @@ export const MarketDashboard: React.FC<MarketDashboardProps> = ({
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (addInput.trim()) {
-      onAddWatchlist(addInput.trim().toUpperCase());
+      const resolved = resolveTicker(addInput.trim());
+      onAddWatchlist(resolved);
       setAddInput('');
+      setShowAddDropdown(false);
     }
   };
+
+  const handleAddSuggestionClick = (ticker: string) => {
+    const resolved = resolveTicker(ticker);
+    onAddWatchlist(resolved);
+    setAddInput('');
+    setShowAddDropdown(false);
+  };
+
+  const addSuggestions = searchStockSuggestions(addInput);
 
   // Filter watchlist according to the tab
   const filteredWatchlist = watchlist.filter((ticker) => {
@@ -202,17 +223,61 @@ export const MarketDashboard: React.FC<MarketDashboardProps> = ({
           </div>
 
           {/* Add Ticker Form */}
-          <form onSubmit={handleAddSubmit} className="flex gap-2 mb-4">
-            <input
-              type="text"
-              value={addInput}
-              onChange={(e) => setAddInput(e.target.value)}
-              placeholder="新增自選代號 (如: TSLA, 2330)"
-              className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-950/70 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-slate-700 transition-colors"
-            />
+          <form onSubmit={handleAddSubmit} className="relative flex gap-2 mb-4">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={addInput}
+                onChange={(e) => {
+                  setAddInput(e.target.value);
+                  setShowAddDropdown(true);
+                }}
+                onFocus={() => setShowAddDropdown(true)}
+                onBlur={() => setTimeout(() => setShowAddDropdown(false), 250)}
+                placeholder="新增自選代號或名稱 (如: 6196, 帆宣, TSLA, 2330)"
+                className="w-full px-4 py-2.5 rounded-2xl bg-slate-950/70 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500/60 transition-colors"
+              />
+
+              {/* Add Autocomplete Dropdown */}
+              {showAddDropdown && (addSuggestions.length > 0 || addInput.trim().length > 0) && (
+                <div className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-slate-950/95 backdrop-blur-xl border border-slate-800 shadow-2xl z-50 overflow-hidden max-h-60 overflow-y-auto divide-y divide-slate-900">
+                  {addSuggestions.map((item) => (
+                    <button
+                      key={`${item.ticker}-${item.name}`}
+                      type="button"
+                      onMouseDown={() => handleAddSuggestionClick(item.ticker)}
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-slate-900 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-200 text-sm group-hover:text-indigo-300">
+                          {item.name}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">點擊加入自選追蹤</span>
+                      </div>
+                      <span className="text-xs text-indigo-400 font-mono font-bold bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">
+                        {item.ticker}
+                      </span>
+                    </button>
+                  ))}
+
+                  {/* Direct Add Option */}
+                  {addInput.trim() && (
+                    <button
+                      type="button"
+                      onMouseDown={() => handleAddSubmit({ preventDefault: () => {} } as any)}
+                      className="w-full flex items-center justify-between px-4 py-2 text-left bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <span>直接新增代號/名稱："{addInput.trim()}"</span>
+                      <i className="fa-solid fa-plus text-xs"></i>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               type="submit"
-              className="px-5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              className="px-5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
             >
               <i className="fa-solid fa-plus"></i>
               <span>新增</span>

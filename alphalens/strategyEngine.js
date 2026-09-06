@@ -57,6 +57,112 @@ export function calculateATR(candles, period = 14) {
 }
 
 /**
+ * Calculate Average Directional Index (ADX)
+ */
+export function calculateADX(candles, period = 14) {
+    if (candles.length < period * 2) return 20;
+    const trs = [];
+    const plusDMs = [];
+    const minusDMs = [];
+
+    for (let i = 1; i < candles.length; i++) {
+        const h = candles[i].high;
+        const l = candles[i].low;
+        const ph = candles[i - 1].high;
+        const pl = candles[i - 1].low;
+        const pc = candles[i - 1].close;
+
+        trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+        plusDMs.push((h - ph > pl - l && h - ph > 0) ? h - ph : 0);
+        minusDMs.push((pl - l > h - ph && pl - l > 0) ? pl - l : 0);
+    }
+
+    let trSmoothed = trs.slice(0, period).reduce((a, b) => a + b, 0);
+    let plusDMSmoothed = plusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+    let minusDMSmoothed = minusDMs.slice(0, period).reduce((a, b) => a + b, 0);
+    const dxs = [];
+
+    for (let i = period; i < trs.length; i++) {
+        trSmoothed = trSmoothed - (trSmoothed / period) + trs[i];
+        plusDMSmoothed = plusDMSmoothed - (plusDMSmoothed / period) + plusDMs[i];
+        minusDMSmoothed = minusDMSmoothed - (minusDMSmoothed / period) + minusDMs[i];
+
+        const plusDI = trSmoothed > 0 ? (plusDMSmoothed / trSmoothed) * 100 : 0;
+        const minusDI = trSmoothed > 0 ? (minusDMSmoothed / trSmoothed) * 100 : 0;
+        const sumDI = plusDI + minusDI;
+        const diffDI = Math.abs(plusDI - minusDI);
+        dxs.push(sumDI > 0 ? (diffDI / sumDI) * 100 : 0);
+    }
+
+    if (dxs.length < period) return 20;
+    let adx = dxs.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    for (let i = period; i < dxs.length; i++) {
+        adx = ((adx * (period - 1)) + dxs[i]) / period;
+    }
+    return adx;
+}
+
+/**
+ * Aggregate Daily candles to Weekly candles
+ */
+export function aggregateToWeeklyCandles(candles) {
+    if (!candles || candles.length === 0) return [];
+    const weeks = new Map();
+
+    for (const c of candles) {
+        const d = new Date(c.time);
+        // Normalize to Monday of that week
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const monday = new Date(d.setDate(diff)).toISOString().split('T')[0];
+
+        if (!weeks.has(monday)) {
+            weeks.set(monday, {
+                time: monday,
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume || 0,
+                days: 1
+            });
+        } else {
+            const w = weeks.get(monday);
+            w.high = Math.max(w.high, c.high);
+            w.low = Math.min(w.low, c.low);
+            w.close = c.close; // Latest close
+            w.volume += (c.volume || 0);
+            w.days += 1;
+        }
+    }
+    return Array.from(weeks.values());
+}
+
+/**
+ * Market Regime Evaluation (加權指數大盤濾網)
+ */
+export function evaluateMarketRegime(marketCandles) {
+    if (!marketCandles || marketCandles.length < 20) {
+        return { regime: 'NEUTRAL', multiplier: 1.0, reason: '大盤資料不足' };
+    }
+    const current = marketCandles[marketCandles.length - 1];
+    const ma20 = calculateMA(marketCandles, 20);
+    const ma60 = marketCandles.length >= 60 ? calculateMA(marketCandles, 60) : ma20;
+    
+    // Check MA20 slope
+    const prevMa20 = marketCandles.length >= 25 ? calculateMA(marketCandles.slice(0, -5), 20) : ma20;
+    const isMa20Up = ma20 >= prevMa20;
+
+    if (current.close > ma20 && isMa20Up) {
+        return { regime: 'BULLISH', multiplier: 1.0, reason: '大盤站上月線且月線走揚' };
+    } else if (current.close > ma60 && current.close <= ma20) {
+        return { regime: 'CONSOLIDATION', multiplier: 0.7, reason: '大盤月線下拉回，季線有撐' };
+    } else {
+        return { regime: 'BEARISH', multiplier: 0.3, reason: '大盤跌破月線/季線，系統性風險偏高' };
+    }
+}
+
+/**
  * Calculate vertical distance between a point and a line segment
  */
 export function calcVerticalDistance(startX, startY, endX, endY, candX, candY) {
@@ -298,6 +404,150 @@ export function evaluateExit(candles, pips, position) {
     const ma5 = calculateMA(candles, 5);
     if (current.close < ma5 && prev.close >= ma5) {
         return { type: 'EXIT_TRAILING', price: current.close, reason: '跌破5MA' };
+    }
+
+    // 3. Exhaustion Defense (High Volume Black K or Long Upper Shadow)
+    const upperShadow = current.high - Math.max(current.open, current.close);
+    const body = Math.abs(current.open - current.close);
+    if (current.volume > prev.volume * 2 && (current.close < current.open || upperShadow > body * 2)) {
+        return { type: 'EXIT_EXHAUSTION', price: current.close, reason: '高點爆量/長上影線' };
+    }
+
+    return null;
+}
+
+/**
+ * Dynamic Profit-Lock Trailing Stop calculation (動態鎖利機制 - 讓利潤奔跑版)
+ */
+export function calculateDynamicTrailingStop(position, currentCandle, atr) {
+    if (!position) return null;
+    const entryPrice = position.entryPrice;
+    const currentHigh = currentCandle.high;
+    const highestHigh = Math.max(position.highestHigh || entryPrice, currentHigh);
+    position.highestHigh = highestHigh;
+
+    let updatedStopLoss = position.stopLoss;
+    let lockState = 'NORMAL';
+
+    // Tier 1: Break-even protection only after significant run-up (>= 2.0 * ATR)
+    if (highestHigh >= entryPrice + 2.0 * atr) {
+        const breakEvenPrice = entryPrice + 0.05 * atr; // 保本略高於成本
+        if (breakEvenPrice > updatedStopLoss) {
+            updatedStopLoss = Number(breakEvenPrice.toFixed(2));
+            lockState = 'BREAKEVEN_LOCKED';
+        }
+    }
+
+    // Tier 2: Wide trailing lock when price gains >= 3.0 * ATR
+    if (highestHigh >= entryPrice + 3.0 * atr) {
+        const profitLockPrice = highestHigh - 1.5 * atr;
+        if (profitLockPrice > updatedStopLoss) {
+            updatedStopLoss = Number(profitLockPrice.toFixed(2));
+            lockState = 'PROFIT_LOCKED';
+        }
+    }
+
+    return {
+        stopLoss: updatedStopLoss,
+        highestHigh,
+        lockState
+    };
+}
+
+/**
+ * Enhanced Entry Evaluation with Market Regime, Bias Filter, and Cooldown
+ */
+export function evaluateEnhancedEntry(candles, pips, trend, options = {}) {
+    const { marketRegime = 'BULLISH', weeklyCandles = [], cooldownRemaining = 0 } = options;
+
+    // 1. Cooldown protection (防洗盤冷卻期)
+    if (cooldownRemaining > 0) return null;
+
+    // 2. Market Regime protection (大盤系統性空頭過濾)
+    if (marketRegime === 'BEARISH') return null;
+
+    const current = candles[candles.length - 1];
+    const prev = candles[candles.length - 2];
+    const ma20 = calculateMA(candles, 20);
+
+    // 3. Bias Filter (月線正乖離過大防追高)
+    if (ma20 > 0) {
+        const bias20 = (current.close - ma20) / ma20;
+        if (bias20 > 0.15) {
+            // 正乖離大於 15%，極端超買，禁止追高買進
+            return null;
+        }
+    }
+
+    // 4. Relative Volume & ADX calculation
+    const volPeriod = Math.min(20, candles.length);
+    const avgVol = candles.slice(-volPeriod).reduce((sum, c) => sum + c.volume, 0) / volPeriod || 1;
+    const rvol = current.volume / avgVol;
+    const adx = calculateADX(candles, 14);
+
+    // Entry A: Consolidation Breakout
+    if (trend.status === 'CONSOLIDATION' && trend.peaks.length > 0) {
+        const neckline = trend.peaks[trend.peaks.length - 1].value;
+        const isRedK = current.close > current.open;
+
+        if (current.close > neckline && rvol > 1.2 && isRedK) {
+            return {
+                type: 'ENHANCED_ENTRY_A',
+                price: current.close,
+                reason: `進階盤整突破 (RVOL: ${rvol.toFixed(1)}x, ADX: ${adx.toFixed(1)})`
+            };
+        }
+    }
+
+    // Entry B: Pullback in Bullish Trend (要求在月線之上或月線走平翻揚)
+    if (trend.status === 'BULLISH' && trend.troughs.length > 0) {
+        const lastTrough = trend.troughs[trend.troughs.length - 1].value;
+        const isRedK = current.close > current.open;
+
+        // 必須站穩在 20MA 之上，避免空頭陰跌反彈騙線
+        const aboveMa20 = ma20 > 0 ? current.close >= ma20 * 0.98 : true;
+
+        if (current.low > lastTrough && isRedK && current.close > prev.close && aboveMa20) {
+            return {
+                type: 'ENHANCED_ENTRY_B',
+                price: current.close,
+                reason: `進階回後買上漲 (站穩月線, ADX: ${adx.toFixed(1)})`
+            };
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Enhanced Exit Evaluation with Profit-Lock and Defense
+ */
+export function evaluateEnhancedExit(candles, pips, position, options = {}) {
+    if (!position || candles.length < 2) return null;
+    const current = candles[candles.length - 1];
+    const prev = candles[candles.length - 2];
+    const atr = calculateATR(candles, 14) || (current.close * 0.03);
+
+    // Update dynamic trailing stop
+    const dynStop = calculateDynamicTrailingStop(position, current, atr);
+    if (dynStop) {
+        position.stopLoss = Math.max(position.stopLoss, dynStop.stopLoss);
+        position.highestHigh = dynStop.highestHigh;
+        position.lockState = dynStop.lockState;
+    }
+
+    // 1. Dynamic Stop Loss / Profit-Lock triggered
+    if (current.low <= position.stopLoss) {
+        const reason = position.lockState === 'PROFIT_LOCKED'
+            ? `觸發動態滾動鎖利 (@ $${position.stopLoss})`
+            : (position.lockState === 'BREAKEVEN_LOCKED' ? `觸發保本防守 (@ $${position.stopLoss})` : `觸發初始停損 (@ $${position.stopLoss})`);
+        return { type: 'EXIT_DYNAMIC_STOP', price: position.stopLoss, reason };
+    }
+
+    // 2. Trailing Stop (5MA) - only if in slight profit or breaking below MA5 with momentum loss
+    const ma5 = calculateMA(candles, 5);
+    if (current.close < ma5 && prev.close >= ma5) {
+        return { type: 'EXIT_TRAILING_5MA', price: current.close, reason: '跌破5MA' };
     }
 
     // 3. Exhaustion Defense (High Volume Black K or Long Upper Shadow)
@@ -595,7 +845,8 @@ function checkHeadAndShoulders(peaks, troughs) {
                     return { 
                         type: 'HEAD_AND_SHOULDERS', name: '頭肩頂', color: '#ef4444', 
                         points: [p1, neck1, p2, neck2, p3], 
-                        similarity: Math.round((1 - shoulderDiff/0.05) * 100) 
+                        similarity: Math.round((1 - shoulderDiff/0.05) * 100),
+                        probability: { bullish: 15, bearish: 85 }
                     };
                 }
             }
@@ -655,8 +906,8 @@ export function generatePIPSignal(candles, providedPips = null) {
         finalSignal.text = `${p.name} (相似度 ${p.similarity}%)`;
         finalSignal.color = p.color;
         
-        if (p.probability.bullish > 60) finalSignal.signal = 'BUY';
-        if (p.probability.bearish > 60) finalSignal.signal = 'SELL';
+        if (p.probability && p.probability.bullish > 60) finalSignal.signal = 'BUY';
+        if (p.probability && p.probability.bearish > 60) finalSignal.signal = 'SELL';
     }
 
     finalSignal.probability = calculateProbability(finalSignal, trend, candles);

@@ -1,0 +1,465 @@
+{
+  "period": "2026-04-01 ~ 2026-08-31",
+  "phison": {
+    "baseline": {
+      "name": "群聯",
+      "ticker": "8299.TWO",
+      "version": "v1.0 (基準版)",
+      "totalTrades": 14,
+      "winRate": 57.1,
+      "grossReturn": 52.03,
+      "netReturn": 45.67,
+      "profitFactor": 2.03,
+      "trades": [
+        {
+          "entryDate": "2026-04-17",
+          "entryPrice": 1570,
+          "exitDate": "2026-04-29",
+          "exitPrice": 2015,
+          "grossPct": 28.34,
+          "netPct": 27.87,
+          "reason": "達到第二停利點 TP2 ($2015)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-05-04",
+          "entryPrice": 2010,
+          "exitDate": "2026-05-11",
+          "exitPrice": 2513.75,
+          "grossPct": 25.06,
+          "netPct": 24.59,
+          "reason": "達到第二停利點 TP2 ($2513.75)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-05-18",
+          "entryPrice": 2735,
+          "exitDate": "2026-05-19",
+          "exitPrice": 2465,
+          "grossPct": -9.87,
+          "netPct": -10.34,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-05-22",
+          "entryPrice": 2430,
+          "exitDate": "2026-05-28",
+          "exitPrice": 2450,
+          "grossPct": 0.82,
+          "netPct": 0.35,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-05-29",
+          "entryPrice": 2575,
+          "exitDate": "2026-06-10",
+          "exitPrice": 2175.71,
+          "grossPct": -15.51,
+          "netPct": -15.98,
+          "reason": "觸發硬停損 ($2175.71)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-06-12",
+          "entryPrice": 2310,
+          "exitDate": "2026-06-23",
+          "exitPrice": 2430,
+          "grossPct": 5.19,
+          "netPct": 4.72,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-06-29",
+          "entryPrice": 2340,
+          "exitDate": "2026-07-01",
+          "exitPrice": 2270,
+          "grossPct": -2.99,
+          "netPct": -3.46,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-07-02",
+          "entryPrice": 2240,
+          "exitDate": "2026-07-07",
+          "exitPrice": 2145,
+          "grossPct": -4.24,
+          "netPct": -4.71,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-07-08",
+          "entryPrice": 2140,
+          "exitDate": "2026-07-13",
+          "exitPrice": 2170,
+          "grossPct": 1.4,
+          "netPct": 0.93,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-07-14",
+          "entryPrice": 2050,
+          "exitDate": "2026-07-16",
+          "exitPrice": 1980,
+          "grossPct": -3.41,
+          "netPct": -3.89,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-07-17",
+          "entryPrice": 1785,
+          "exitDate": "2026-07-24",
+          "exitPrice": 1825,
+          "grossPct": 2.24,
+          "netPct": 1.77,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-07-27",
+          "entryPrice": 1820,
+          "exitDate": "2026-07-29",
+          "exitPrice": 1560,
+          "grossPct": -14.29,
+          "netPct": -14.76,
+          "reason": "觸發硬停損 ($1560)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        },
+        {
+          "entryDate": "2026-07-30",
+          "entryPrice": 1495,
+          "exitDate": "2026-08-06",
+          "exitPrice": 2017.5,
+          "grossPct": 34.95,
+          "netPct": 34.48,
+          "reason": "達到第二停利點 TP2 ($2017.5)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 82%)"
+        },
+        {
+          "entryDate": "2026-08-21",
+          "entryPrice": 2075,
+          "exitDate": "2026-08-31 (期末未平倉)",
+          "exitPrice": 2165,
+          "grossPct": 4.34,
+          "netPct": 4.1,
+          "reason": "期末持倉點收",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        }
+      ]
+    },
+    "evolved": {
+      "name": "群聯",
+      "ticker": "8299.TWO",
+      "version": "v2.0 (進化版)",
+      "totalTrades": 5,
+      "winRate": 80,
+      "grossReturn": 47.45,
+      "netReturn": 45.33,
+      "profitFactor": 4.06,
+      "trades": [
+        {
+          "entryDate": "2026-04-20",
+          "entryPrice": 1635,
+          "exitDate": "2026-04-29",
+          "exitPrice": 2068.75,
+          "grossPct": 26.53,
+          "netPct": 26.06,
+          "reason": "達到目標停利點 TP2 ($2068.75)",
+          "entryReason": "底部強反轉型態 [W底 (雙重底) (相似度 63%)] (多頭勝率: 83%)"
+        },
+        {
+          "entryDate": "2026-05-22",
+          "entryPrice": 2430,
+          "exitDate": "2026-05-28",
+          "exitPrice": 2450,
+          "grossPct": 0.82,
+          "netPct": 0.35,
+          "reason": "跌破5MA",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 29.0)"
+        },
+        {
+          "entryDate": "2026-05-29",
+          "entryPrice": 2575,
+          "exitDate": "2026-06-10",
+          "exitPrice": 2175.71,
+          "grossPct": -15.51,
+          "netPct": -15.98,
+          "reason": "觸發初始停損 (@ $2175.71)",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 23.7)"
+        },
+        {
+          "entryDate": "2026-07-29",
+          "entryPrice": 1515,
+          "exitDate": "2026-08-06",
+          "exitPrice": 1988.75,
+          "grossPct": 31.27,
+          "netPct": 30.8,
+          "reason": "達到目標停利點 TP2 ($1988.75)",
+          "entryReason": "底部強反轉型態 [下降楔形 (相似度 85%)] (多頭勝率: 82%)"
+        },
+        {
+          "entryDate": "2026-08-21",
+          "entryPrice": 2075,
+          "exitDate": "2026-08-31 (期末未平倉)",
+          "exitPrice": 2165,
+          "grossPct": 4.34,
+          "netPct": 4.1,
+          "reason": "期末持倉點收",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 15.8)"
+        }
+      ]
+    }
+  },
+  "marketech": {
+    "baseline": {
+      "name": "帆宣",
+      "ticker": "6196.TW",
+      "version": "v1.0 (基準版)",
+      "totalTrades": 13,
+      "winRate": 38.5,
+      "grossReturn": 27.5,
+      "netReturn": 21.39,
+      "profitFactor": 2.04,
+      "trades": [
+        {
+          "entryDate": "2026-04-01",
+          "entryPrice": 280,
+          "exitDate": "2026-04-10",
+          "exitPrice": 325.5,
+          "grossPct": 16.25,
+          "netPct": 15.78,
+          "reason": "達到第二停利點 TP2 ($325.5)",
+          "entryReason": "AI型態 [W底 (雙重底) (相似度 96%)] (多頭勝率: 89%)"
+        },
+        {
+          "entryDate": "2026-04-13",
+          "entryPrice": 320.5,
+          "exitDate": "2026-04-20",
+          "exitPrice": 373.75,
+          "grossPct": 16.61,
+          "netPct": 16.14,
+          "reason": "達到第二停利點 TP2 ($373.75)",
+          "entryReason": "AI型態 [W底 (雙重底) (相似度 96%)] (多頭勝率: 98%)"
+        },
+        {
+          "entryDate": "2026-04-24",
+          "entryPrice": 386,
+          "exitDate": "2026-04-29",
+          "exitPrice": 376.5,
+          "grossPct": -2.46,
+          "netPct": -2.93,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-04-30",
+          "entryPrice": 378,
+          "exitDate": "2026-05-05",
+          "exitPrice": 374,
+          "grossPct": -1.06,
+          "netPct": -1.53,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-05-06",
+          "entryPrice": 395.5,
+          "exitDate": "2026-05-15",
+          "exitPrice": 403.5,
+          "grossPct": 2.02,
+          "netPct": 1.55,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-05-18",
+          "entryPrice": 410.5,
+          "exitDate": "2026-05-26",
+          "exitPrice": 486.75,
+          "grossPct": 18.57,
+          "netPct": 18.1,
+          "reason": "達到第二停利點 TP2 ($486.75)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-06-02",
+          "entryPrice": 517,
+          "exitDate": "2026-06-08",
+          "exitPrice": 462.36,
+          "grossPct": -10.57,
+          "netPct": -11.04,
+          "reason": "觸發硬停損 ($462.36)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-06-09",
+          "entryPrice": 520,
+          "exitDate": "2026-06-10",
+          "exitPrice": 500,
+          "grossPct": -3.85,
+          "netPct": -4.32,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-06-12",
+          "entryPrice": 548,
+          "exitDate": "2026-06-23",
+          "exitPrice": 541,
+          "grossPct": -1.28,
+          "netPct": -1.75,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "回後買上漲 (ENTRY_B)"
+        },
+        {
+          "entryDate": "2026-07-06",
+          "entryPrice": 570,
+          "exitDate": "2026-07-13",
+          "exitPrice": 551,
+          "grossPct": -3.33,
+          "netPct": -3.8,
+          "reason": "高點爆量/長上影線 (EXIT_EXHAUSTION)",
+          "entryReason": "AI型態 [W底 (雙重底) (相似度 63%)] (多頭勝率: 93%)"
+        },
+        {
+          "entryDate": "2026-07-14",
+          "entryPrice": 539,
+          "exitDate": "2026-07-17",
+          "exitPrice": 542,
+          "grossPct": 0.56,
+          "netPct": 0.09,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [W底 (雙重底) (相似度 66%)] (多頭勝率: 83%)"
+        },
+        {
+          "entryDate": "2026-07-21",
+          "entryPrice": 540,
+          "exitDate": "2026-07-24",
+          "exitPrice": 526,
+          "grossPct": -2.59,
+          "netPct": -3.06,
+          "reason": "跌破5MA (EXIT_TRAILING)",
+          "entryReason": "AI型態 [W底 (雙重底) (相似度 21%)] (多頭勝率: 74%)"
+        },
+        {
+          "entryDate": "2026-07-28",
+          "entryPrice": 474.5,
+          "exitDate": "2026-07-31",
+          "exitPrice": 468,
+          "grossPct": -1.37,
+          "netPct": -1.84,
+          "reason": "高點爆量/長上影線 (EXIT_EXHAUSTION)",
+          "entryReason": "AI型態 [下降楔形 (相似度 85%)] (多頭勝率: 72%)"
+        }
+      ]
+    },
+    "evolved": {
+      "name": "帆宣",
+      "ticker": "6196.TW",
+      "version": "v2.0 (進化版)",
+      "totalTrades": 9,
+      "winRate": 44.4,
+      "grossReturn": 44.23,
+      "netReturn": 40,
+      "profitFactor": 5.65,
+      "trades": [
+        {
+          "entryDate": "2026-04-01",
+          "entryPrice": 280,
+          "exitDate": "2026-04-10",
+          "exitPrice": 325.5,
+          "grossPct": 16.25,
+          "netPct": 15.78,
+          "reason": "達到目標停利點 TP2 ($325.5)",
+          "entryReason": "底部強反轉型態 [W底 (雙重底) (相似度 96%)] (多頭勝率: 89%)"
+        },
+        {
+          "entryDate": "2026-04-13",
+          "entryPrice": 320.5,
+          "exitDate": "2026-04-20",
+          "exitPrice": 373.75,
+          "grossPct": 16.61,
+          "netPct": 16.14,
+          "reason": "達到目標停利點 TP2 ($373.75)",
+          "entryReason": "底部強反轉型態 [W底 (雙重底) (相似度 96%)] (多頭勝率: 98%)"
+        },
+        {
+          "entryDate": "2026-04-30",
+          "entryPrice": 378,
+          "exitDate": "2026-05-05",
+          "exitPrice": 374,
+          "grossPct": -1.06,
+          "netPct": -1.53,
+          "reason": "跌破5MA",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 25.2)"
+        },
+        {
+          "entryDate": "2026-05-06",
+          "entryPrice": 395.5,
+          "exitDate": "2026-05-15",
+          "exitPrice": 403.5,
+          "grossPct": 2.02,
+          "netPct": 1.55,
+          "reason": "跌破5MA",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 22.7)"
+        },
+        {
+          "entryDate": "2026-05-18",
+          "entryPrice": 410.5,
+          "exitDate": "2026-05-26",
+          "exitPrice": 486.75,
+          "grossPct": 18.57,
+          "netPct": 18.1,
+          "reason": "達到目標停利點 TP2 ($486.75)",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 30.7)"
+        },
+        {
+          "entryDate": "2026-06-09",
+          "entryPrice": 520,
+          "exitDate": "2026-06-10",
+          "exitPrice": 500,
+          "grossPct": -3.85,
+          "netPct": -4.32,
+          "reason": "跌破5MA",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 46.8)"
+        },
+        {
+          "entryDate": "2026-06-12",
+          "entryPrice": 548,
+          "exitDate": "2026-06-23",
+          "exitPrice": 541,
+          "grossPct": -1.28,
+          "netPct": -1.75,
+          "reason": "跌破5MA",
+          "entryReason": "進階回後買上漲 (站穩月線, ADX: 45.1)"
+        },
+        {
+          "entryDate": "2026-07-06",
+          "entryPrice": 570,
+          "exitDate": "2026-07-13",
+          "exitPrice": 551,
+          "grossPct": -3.33,
+          "netPct": -3.8,
+          "reason": "高點爆量/長上影線",
+          "entryReason": "底部強反轉型態 [W底 (雙重底) (相似度 63%)] (多頭勝率: 93%)"
+        },
+        {
+          "entryDate": "2026-07-14",
+          "entryPrice": 539,
+          "exitDate": "2026-07-17",
+          "exitPrice": 540.62,
+          "grossPct": 0.3,
+          "netPct": -0.17,
+          "reason": "觸發初始停損 (@ $540.62)",
+          "entryReason": "底部強反轉型態 [W底 (雙重底) (相似度 66%)] (多頭勝率: 83%)"
+        }
+      ]
+    }
+  }
+}

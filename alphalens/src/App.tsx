@@ -10,6 +10,7 @@ import { DecisionAssistant } from './components/DecisionAssistant';
 import {
   isTaiwanStock,
   resolveTicker,
+  normalizeTaiwanTicker,
   cleanTwTicker,
   fetchStockHistoryCached,
   getTaiwanStockName,
@@ -229,9 +230,7 @@ export const App: React.FC = () => {
       setActiveProjection('none'); // Reset active projection
 
       try {
-        const resolved = resolveTicker(currentTicker);
-        const suffix = isTaiwanStock(resolved) && !resolved.includes('.') ? `${resolved}.TW` : resolved;
-        const normalized = suffix.toUpperCase();
+        const normalized = normalizeTaiwanTicker(currentTicker).toUpperCase();
 
         // 1. If it's a predefined plan, load the core specifications out-of-the-box
         const cleanSym = cleanTwTicker(normalized);
@@ -416,14 +415,13 @@ export const App: React.FC = () => {
   }, [currentTicker]);
 
   const handleSearch = (tickerSym: string) => {
-    setCurrentTicker(tickerSym);
+    const normalized = normalizeTaiwanTicker(tickerSym);
+    setCurrentTicker(normalized);
     setActiveView('detail');
   };
 
   const handleAddWatchlist = (tickerSym: string) => {
-    const resolved = resolveTicker(tickerSym);
-    const suffix = isTaiwanStock(resolved) && !resolved.includes('.') ? `${resolved}.TW` : resolved;
-    const normalized = suffix.toUpperCase();
+    const normalized = normalizeTaiwanTicker(tickerSym);
     if (!watchlist.includes(normalized)) {
       setWatchlist(prev => [...prev, normalized]);
     }
@@ -434,14 +432,13 @@ export const App: React.FC = () => {
   };
 
   const handleSelectTicker = (tickerSym: string) => {
-    setCurrentTicker(tickerSym);
+    const normalized = normalizeTaiwanTicker(tickerSym);
+    setCurrentTicker(normalized);
     setActiveView('detail');
   };
 
   const toggleObserve = () => {
-    const resolved = resolveTicker(currentPlan.ticker);
-    const suffix = isTaiwanStock(resolved) && !resolved.includes('.') ? `${resolved}.TW` : resolved;
-    const normalized = suffix.toUpperCase();
+    const normalized = normalizeTaiwanTicker(currentPlan.ticker);
     if (watchlist.includes(normalized)) {
       setWatchlist(prev => prev.filter(t => t !== normalized));
     } else {

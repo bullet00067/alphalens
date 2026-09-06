@@ -15,17 +15,66 @@ const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const TWELVEDATA_API_KEY = import.meta.env.VITE_TWELVEDATA_API_KEY || '';
 
-// Common TW Stocks mapping for name-to-ticker resolution
+// Common TW Stocks mapping for name-to-ticker resolution & autocomplete
 export const TW_NAME_MAP: Record<string, string> = {
   '台積電': '2330.TW',
   '鴻海': '2317.TW',
-  '群聯': '8299.TWO',
   '聯發科': '2454.TW',
+  '廣達': '2382.TW',
+  '台達電': '2308.TW',
+  '聯電': '2303.TW',
+  '日月光投控': '3711.TW',
+  '富邦金': '2881.TW',
+  '國泰金': '2882.TW',
+  '中信金': '2891.TW',
   '長榮': '2603.TW',
   '陽明': '2609.TW',
   '萬海': '2615.TW',
-  '家登': '3680.TWO'
+  '緯創': '3231.TW',
+  '技嘉': '2376.TW',
+  '微星': '2377.TW',
+  '英業達': '2356.TW',
+  '緯穎': '6669.TW',
+  '智原': '3035.TW',
+  '創意': '3443.TW',
+  '世芯-KY': '3661.TW',
+  '世芯': '3661.TW',
+  '祥碩': '5269.TW',
+  '群聯': '8299.TWO',
+  '家登': '3680.TWO',
+  '帆宣': '6196.TW',
+  '弘塑': '3131.TWO',
+  '辛耘': '3583.TW',
+  '萬潤': '6187.TWO',
+  '均華': '6640.TWO',
+  '奇鋐': '3017.TW',
+  '雙鴻': '3324.TWO',
+  '健策': '3653.TW',
+  '力旺': '3529.TWO',
+  '信驊': '5274.TWO',
+  '大立光': '3008.TW',
+  '玉晶光': '3406.TW',
+  '欣興': '3037.TW',
+  '南電': '8046.TW',
+  '景碩': '3189.TW',
+  '台勝科': '3532.TW',
+  '環球晶': '6488.TWO',
+  '中美晶': '5483.TWO',
+  '元太': '8069.TWO',
+  '譜瑞-KY': '4966.TWO',
+  '穩懋': '3105.TWO',
+  '宏碁': '2353.TW',
+  '華碩': '2357.TW',
+  '研華': '2395.TW',
+  '中華電': '2412.TW'
 };
+
+// Known OTC (GreTai / TPEx) stocks that require .TWO suffix on Yahoo Finance
+export const KNOWN_OTC_STOCKS = new Set([
+  '8299', '3680', '3131', '6187', '6640', '3324', '3529', '5274', 
+  '6488', '5483', '8069', '4966', '3105', '5347', '6274', '3293', 
+  '6548', '3558', '6223', '3483', '8054', '6147'
+]);
 
 export interface StockQuote {
   c: number;   // Current price
@@ -88,18 +137,85 @@ export function cleanTwTicker(ticker: string): string {
 export function isTaiwanStock(ticker: string): boolean {
   if (!ticker) return false;
   const clean = ticker.trim();
-  if (/[ \u4e00-\u9fa5]/.test(clean)) return true;
+  if (/[\u4e00-\u9fa5]/.test(clean)) return true;
   return /^\d{4,6}$/.test(clean) || clean.endsWith('.TW') || clean.endsWith('.TWO');
 }
 
 /**
- * Resolve Stock name to ticker or trim input
+ * Format any Taiwan Stock input to canonical Yahoo format (e.g. 6196 -> 6196.TW, 8299 -> 8299.TWO)
+ */
+export function normalizeTaiwanTicker(input: string): string {
+  if (!input) return '';
+  const resolved = resolveTicker(input);
+  if (resolved.endsWith('.TW') || resolved.endsWith('.TWO')) {
+    return resolved;
+  }
+  const clean = cleanTwTicker(resolved);
+  if (/^\d{4,6}$/.test(clean)) {
+    return KNOWN_OTC_STOCKS.has(clean) ? `${clean}.TWO` : `${clean}.TW`;
+  }
+  return resolved;
+}
+
+/**
+ * Resolve Stock name to ticker or normalize input
  */
 export function resolveTicker(input: string): string {
   if (!input) return '';
   const cleanInput = input.trim();
+
+  // 1. Direct match in TW_NAME_MAP
   if (TW_NAME_MAP[cleanInput]) return TW_NAME_MAP[cleanInput];
-  return cleanInput;
+
+  // 2. Fuzzy match in TW_NAME_MAP by name or code
+  for (const [name, sym] of Object.entries(TW_NAME_MAP)) {
+    if (name.includes(cleanInput) || cleanInput.includes(name)) {
+      return sym;
+    }
+    const cleanSym = cleanTwTicker(sym);
+    if (cleanSym === cleanInput) {
+      return sym;
+    }
+  }
+
+  // 3. If it's a 4-digit code, check OTC or TWSE
+  if (/^\d{4,6}$/.test(cleanInput)) {
+    return KNOWN_OTC_STOCKS.has(cleanInput) ? `${cleanInput}.TWO` : `${cleanInput}.TW`;
+  }
+
+  return cleanInput.toUpperCase();
+}
+
+/**
+ * Search autocomplete suggestions across common stocks and direct ticker input
+ */
+export function searchStockSuggestions(query: string): Array<{ name: string; ticker: string }> {
+  if (!query || !query.trim()) return [];
+  const q = query.trim().toLowerCase();
+  const results: Array<{ name: string; ticker: string }> = [];
+
+  // Match from TW_NAME_MAP
+  for (const [name, sym] of Object.entries(TW_NAME_MAP)) {
+    const cleanSym = cleanTwTicker(sym).toLowerCase();
+    if (name.toLowerCase().includes(q) || cleanSym.includes(q) || sym.toLowerCase().includes(q)) {
+      results.push({ name, ticker: sym });
+    }
+  }
+
+  // If query is a 4-digit number not yet in results, offer a direct candidate
+  if (/^\d{4,6}$/.test(query.trim())) {
+    const clean = query.trim();
+    const isAlreadyIncluded = results.some(r => cleanTwTicker(r.ticker) === clean);
+    if (!isAlreadyIncluded) {
+      const canonical = KNOWN_OTC_STOCKS.has(clean) ? `${clean}.TWO` : `${clean}.TW`;
+      results.unshift({
+        name: `台股代號 ${clean}`,
+        ticker: canonical
+      });
+    }
+  }
+
+  return results.slice(0, 8);
 }
 
 /**

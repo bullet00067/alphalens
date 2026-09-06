@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatCurrency, TW_NAME_MAP } from '../utils/api';
+import { formatCurrency, searchStockSuggestions, resolveTicker } from '../utils/api';
 
 interface DashboardHeaderProps {
   ticker: string;
@@ -34,25 +34,22 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
-      onSearch(searchInput.trim().toUpperCase());
+      const resolved = resolveTicker(searchInput.trim());
+      onSearch(resolved);
       setShowDropdown(false);
+      setSearchInput('');
     }
   };
 
   const handleAutocompleteClick = (tickerSym: string) => {
-    onSearch(tickerSym);
+    const resolved = resolveTicker(tickerSym);
+    onSearch(resolved);
     setSearchInput('');
     setShowDropdown(false);
   };
 
-  // Filter autocomplete results based on search input
-  const searchSuggestions = searchInput.trim()
-    ? Object.entries(TW_NAME_MAP).filter(
-        ([n, sym]) =>
-          n.toLowerCase().includes(searchInput.toLowerCase()) ||
-          sym.toLowerCase().includes(searchInput.toLowerCase())
-      )
-    : [];
+  // Dynamic autocomplete results using multi-match searchStockSuggestions
+  const searchSuggestions = searchStockSuggestions(searchInput);
 
   const isPositive = change >= 0;
 
@@ -61,11 +58,16 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       {/* Left Area: Search & Ticker Details */}
       <div className="flex flex-col md:flex-row items-start md:items-center gap-4 flex-1">
         {/* Search Input Container */}
-        <form onSubmit={handleSubmit} className="relative w-full md:w-80">
+        <form onSubmit={handleSubmit} className="relative w-full md:w-84">
           <div className="relative flex items-center">
-            <span className="absolute left-4 text-slate-400">
-              <i className="fa-solid fa-magnifying-glass"></i>
-            </span>
+            {/* Clickable Search Button */}
+            <button
+              type="submit"
+              title="執行搜尋"
+              className="absolute left-1.5 p-2 rounded-xl text-slate-400 hover:text-indigo-400 hover:bg-slate-800/50 transition-colors cursor-pointer border-0 flex items-center justify-center z-10"
+            >
+              <i className="fa-solid fa-magnifying-glass text-sm"></i>
+            </button>
             <input
               type="text"
               value={searchInput}
@@ -74,26 +76,54 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 setShowDropdown(true);
               }}
               onFocus={() => setShowDropdown(true)}
-              onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
-              placeholder="搜尋代號或名稱 (如: 3680, 家登)"
-              className="w-full pl-11 pr-4 py-2.5 rounded-2xl bg-slate-950/70 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-slate-700 transition-colors"
+              onBlur={() => setTimeout(() => setShowDropdown(false), 250)}
+              placeholder="搜尋代號或名稱 (如: 6196, 帆宣, 8299)"
+              className="w-full pl-11 pr-10 py-2.5 rounded-2xl bg-slate-950/70 border border-slate-800 text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30 transition-all"
             />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => setSearchInput('')}
+                className="absolute right-3 text-slate-500 hover:text-slate-300 cursor-pointer p-1 text-xs"
+              >
+                <i className="fa-solid fa-circle-xmark"></i>
+              </button>
+            )}
           </div>
 
           {/* Autocomplete Dropdown */}
-          {showDropdown && searchSuggestions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl z-50 overflow-hidden max-h-60 overflow-y-auto">
-              {searchSuggestions.map(([n, sym]) => (
+          {showDropdown && (searchSuggestions.length > 0 || searchInput.trim().length > 0) && (
+            <div className="absolute top-full left-0 right-0 mt-2 rounded-2xl bg-slate-950/95 backdrop-blur-xl border border-slate-800 shadow-2xl z-50 overflow-hidden max-h-72 overflow-y-auto divide-y divide-slate-900">
+              {searchSuggestions.map((item) => (
                 <button
-                  key={sym}
+                  key={`${item.ticker}-${item.name}`}
                   type="button"
-                  onMouseDown={() => handleAutocompleteClick(sym)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-900 transition-colors border-b border-slate-900 last:border-b-0 cursor-pointer"
+                  onMouseDown={() => handleAutocompleteClick(item.ticker)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-900 transition-colors cursor-pointer group"
                 >
-                  <span className="font-semibold text-slate-200 text-sm">{n}</span>
-                  <span className="text-xs text-slate-400 font-mono">{sym}</span>
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-slate-200 text-sm group-hover:text-indigo-300 transition-colors">
+                      {item.name}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">點擊切換計畫與分析</span>
+                  </div>
+                  <span className="text-xs text-indigo-400 font-mono font-bold bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20">
+                    {item.ticker}
+                  </span>
                 </button>
               ))}
+
+              {/* Direct query submit option */}
+              {searchInput.trim() && (
+                <button
+                  type="button"
+                  onMouseDown={() => handleSubmit({ preventDefault: () => {} } as any)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <span>直接搜尋代號/名稱："{searchInput.trim()}"</span>
+                  <i className="fa-solid fa-arrow-turn-down fa-rotate-90"></i>
+                </button>
+              )}
             </div>
           )}
         </form>
