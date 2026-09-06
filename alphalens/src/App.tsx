@@ -18,6 +18,7 @@ import {
   getQuickQuote
 } from './utils/api';
 import { findPIPs, analyzeTrend, generatePIPSignal, calculateATR } from './utils/strategyEngine';
+import { validateSupportResistance } from './utils/tradingValidators';
 
 // Pre-defined plans
 const PREDEFINED_PLANS: Record<string, TradingPlanData> = {
@@ -333,25 +334,28 @@ export const App: React.FC = () => {
           const allPeaks = pips.filter(p => p.type === 'high').map(p => p.value);
           const allTroughs = pips.filter(p => p.type === 'low').map(p => p.value);
 
-          // Find recent peaks above currentPrice (within a 1% buffer)
-          const upperPeaks = allPeaks.filter(val => val > currentPrice * 0.99);
-          const p1 = upperPeaks[upperPeaks.length - 1] || currentPrice * 1.05;
+          // Find recent peaks strictly above currentPrice
+          const upperPeaks = allPeaks.filter(val => val > currentPrice * 1.005);
+          const p1 = upperPeaks[upperPeaks.length - 1] || currentPrice * 1.03;
           const p2 = upperPeaks[upperPeaks.length - 2] || p1 * 1.05;
-          let r1 = Math.min(p1, p2);
-          let r2 = Math.max(p1, p2);
-          if (r1 === r2) {
-            r2 = r1 * 1.05;
-          }
+          let rawR1 = Math.min(p1, p2);
+          let rawR2 = Math.max(p1, p2);
 
-          // Find recent troughs below currentPrice (within a 1% buffer)
-          const lowerTroughs = allTroughs.filter(val => val < currentPrice * 1.01);
-          const t1 = lowerTroughs[lowerTroughs.length - 1] || currentPrice * 0.95;
+          // Find recent troughs strictly below currentPrice
+          const lowerTroughs = allTroughs.filter(val => val < currentPrice * 0.995);
+          const t1 = lowerTroughs[lowerTroughs.length - 1] || currentPrice * 0.97;
           const t2 = lowerTroughs[lowerTroughs.length - 2] || t1 * 0.95;
-          let s1 = Math.max(t1, t2);
-          let s2 = Math.min(t1, t2);
-          if (s1 === s2) {
-            s2 = s1 * 0.95;
-          }
+          let rawS1 = Math.max(t1, t2);
+          let rawS2 = Math.min(t1, t2);
+
+          // Enforce strict spatial hierarchy: S2 < S1 < currentPrice < R1 < R2
+          const { s1, s2, r1, r2 } = validateSupportResistance(
+            currentPrice,
+            rawS1,
+            rawS2,
+            rawR1,
+            rawR2
+          );
 
           const trendDiag: TrendDiagnosis = {
             status: trendRes.status === 'BULLISH' ? '多頭格局，走勢偏強' : trendRes.status === 'BEARISH' ? '空頭格局，震盪築底' : '區間震盪，方向確認中',

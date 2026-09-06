@@ -1,5 +1,6 @@
 import React from 'react';
 import { StrategyCondition } from '../types/trading';
+import { validateRiskReward } from '../utils/tradingValidators';
 
 interface RiskControlTableProps {
   bullish: StrategyCondition;
@@ -17,39 +18,15 @@ export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bea
     return match ? parseFloat(match[0]) : 0;
   };
 
-  const calculateRR = (strategy: StrategyCondition, isBullish: boolean): { rr: number; label: string } => {
+  const calculateRR = (strategy: StrategyCondition, isBullish: boolean): { rr: number; label: string; isValid: boolean } => {
     const entry = parseEntryPrice(strategy.entryRange);
     const sl = strategy.stopLoss;
     const target1 = strategy.targets[0] || 0;
-
-    if (entry <= 0 || sl <= 0 || target1 <= 0) {
-      return { rr: 0, label: 'N/A' };
-    }
-
-    let risk = 0;
-    let reward = 0;
-
-    if (isBullish) {
-      risk = entry - sl;
-      reward = target1 - entry;
-    } else {
-      risk = sl - entry;
-      reward = entry - target1;
-    }
-
-    if (risk <= 0) {
-      return { rr: 99, label: '極高比率 (>10)' };
-    }
-
-    const ratio = reward / risk;
-    return {
-      rr: ratio,
-      label: `${ratio.toFixed(1)} : 1`
-    };
+    return validateRiskReward(entry, sl, target1, isBullish);
   };
 
   const renderRow = (strategy: StrategyCondition, isBullish: boolean) => {
-    const { rr, label } = calculateRR(strategy, isBullish);
+    const { rr, label, isValid } = calculateRR(strategy, isBullish);
     const entry = parseEntryPrice(strategy.entryRange);
     const sl = strategy.stopLoss;
     
@@ -71,11 +48,13 @@ export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bea
     const maxLossText = `最大虧損限制: $${Math.round(totalRiskCapital).toLocaleString()}`;
     
     // High contrast badges: >= 2:1 gets high contrast emerald border, otherwise amber or slate
-    const badgeStyle = rr >= 2
-      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-black animate-pulse'
-      : rr >= 1.5
-        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold'
-        : 'bg-slate-800 text-slate-400 border border-slate-700';
+    const badgeStyle = !isValid
+      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30 font-bold'
+      : rr >= 2
+        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-black animate-pulse'
+        : rr >= 1.5
+          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold'
+          : 'bg-slate-800 text-slate-400 border border-slate-700';
 
     return (
       <tr className="border-b border-slate-800/60 hover:bg-slate-950/20 transition-colors last:border-b-0">
