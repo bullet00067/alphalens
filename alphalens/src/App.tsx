@@ -4,6 +4,7 @@ import { DashboardHeader } from './components/DashboardHeader';
 import { TradingChart } from './components/TradingChart';
 import { TrendAndLevels } from './components/TrendAndLevels';
 import { StrategyBoard } from './components/StrategyBoard';
+import { PositionPlanCard } from './components/PositionPlanCard';
 import { RiskControlTable } from './components/RiskControlTable';
 import { MarketDashboard } from './components/MarketDashboard';
 import { DecisionAssistant } from './components/DecisionAssistant';
@@ -651,6 +652,15 @@ export const App: React.FC = () => {
 
                   {/* Right Sidebar Column (1/3 width on large screens) */}
                   <div className="flex flex-col gap-6 w-full">
+                    {/* User Position & Dynamic Profit/Loss Target Plan */}
+                    <PositionPlanCard
+                      ticker={currentPlan.ticker}
+                      name={currentPlan.name}
+                      currentPrice={currentPlan.levels.currentPrice}
+                      bullishStrategy={currentPlan.bullishStrategy}
+                      bearishStrategy={currentPlan.bearishStrategy}
+                    />
+
                     {/* Risk Control Table assessment details */}
                     <RiskControlTable
                       bullish={currentPlan.bullishStrategy}
