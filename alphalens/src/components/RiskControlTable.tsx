@@ -70,13 +70,13 @@ export const RiskControlTable: React.FC<RiskControlTableProps> = ({ bullish, bea
           {strategy.entryRange}
         </td>
         <td className="px-6 py-4.5 whitespace-nowrap text-rose-400 font-bold font-mono text-sm text-left">
-          {strategy.stopLoss.toFixed(2)}
+          {typeof strategy.stopLoss === 'number' && !isNaN(strategy.stopLoss) ? strategy.stopLoss.toFixed(2) : '--'}
         </td>
         <td className="px-6 py-4.5 whitespace-nowrap text-left">
           <div className="flex items-center gap-1.5 flex-wrap">
             {strategy.targets.map((t, i) => (
               <span key={i} className="text-xs font-bold font-mono px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700">
-                T{i + 1}: {t.toFixed(2)}
+                T{i + 1}: {typeof t === 'number' && !isNaN(t) ? t.toFixed(2) : '--'}
               </span>
             ))}
           </div>

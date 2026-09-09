@@ -144,15 +144,20 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           {/* Price details */}
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-extrabold text-white tracking-tight">
-              {price > 0 ? price.toFixed(2) : '--'}
+              {typeof price === 'number' && !isNaN(price) && price > 0 ? price.toFixed(2) : '--'}
             </span>
             <span
               className={`text-sm font-bold flex items-center gap-1 ${
-                isPositive ? 'text-emerald-400' : 'text-rose-400'
+                (change || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
               }`}
             >
-              <i className={`fa-solid ${isPositive ? 'fa-caret-up' : 'fa-caret-down'}`}></i>
-              {change > 0 ? `+${change.toFixed(2)}` : change.toFixed(2)} ({changePercent > 0 ? `+${changePercent.toFixed(2)}` : changePercent.toFixed(2)}%)
+              <i className={`fa-solid ${(change || 0) >= 0 ? 'fa-caret-up' : 'fa-caret-down'}`}></i>
+              {typeof change === 'number' && !isNaN(change)
+                ? (change > 0 ? `+${change.toFixed(2)}` : change.toFixed(2))
+                : '0.00'}{' '}
+              ({typeof changePercent === 'number' && !isNaN(changePercent)
+                ? (changePercent > 0 ? `+${changePercent.toFixed(2)}` : changePercent.toFixed(2))
+                : '0.00'}%)
             </span>
           </div>
         </div>

@@ -8,7 +8,8 @@ interface StrategyBoardProps {
 }
 
 export const StrategyBoard: React.FC<StrategyBoardProps> = ({ bullish, bearish, ticker }) => {
-  const formatPrice = (p: number) => {
+  const formatPrice = (p: number | undefined | null) => {
+    if (typeof p !== 'number' || isNaN(p)) return '--';
     return p.toFixed(2);
   };
 

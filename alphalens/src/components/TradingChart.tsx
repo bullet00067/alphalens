@@ -608,7 +608,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         lineWidth: 2,
         priceLineVisible: false,
       });
-      rsiSeries.setData(rsiValues);
+      const validRsiValues = rsiValues.filter(
+        d => typeof d.value === 'number' && !isNaN(d.value) && isFinite(d.value)
+      );
+      rsiSeries.setData(validRsiValues);
       subchartSeriesRef.current = rsiSeries;
 
       // Add RSI Overbought (70) and Oversold (30) levels
@@ -652,7 +655,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
           value: stdY,
         };
       });
-      pipSeries.setData(pipData);
+      const validPipData = pipData.filter(
+        d => typeof d.value === 'number' && !isNaN(d.value) && isFinite(d.value)
+      );
+      pipSeries.setData(validPipData);
 
 
       // Add Z-score standard bounds lines

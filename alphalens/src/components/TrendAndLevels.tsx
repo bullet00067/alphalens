@@ -9,7 +9,8 @@ interface TrendAndLevelsProps {
 
 export const TrendAndLevels: React.FC<TrendAndLevelsProps> = ({ levels, trend, ticker }) => {
   // Format numbers nicely
-  const formatPrice = (p: number) => {
+  const formatPrice = (p: number | undefined | null) => {
+    if (typeof p !== 'number' || isNaN(p)) return '--';
     return p.toFixed(2);
   };
 

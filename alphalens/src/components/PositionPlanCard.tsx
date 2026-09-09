@@ -38,6 +38,12 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
   const friction = getMarketFriction(ticker);
   const sym = friction.currencySymbol;
 
+  // Safe number formatter
+  const fmt = (val: number | undefined | null, dec = 1): string => {
+    if (typeof val !== 'number' || isNaN(val)) return '--';
+    return val.toFixed(dec);
+  };
+
   // Load saved position whenever ticker changes
   useEffect(() => {
     const raw = localStorage.getItem('myPositions');
@@ -377,7 +383,7 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
           <label className="text-xs font-bold text-slate-300 flex justify-between">
             <span>買進平均成本</span>
             <span className="text-indigo-400 font-mono text-[11px]">
-              現價: {sym} {currentPrice.toFixed(1)}
+              現價: {sym} {fmt(currentPrice, 1)}
             </span>
           </label>
           <div className="relative">
@@ -390,7 +396,7 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
                 setCostInput(e.target.value);
                 setIsSaved(false);
               }}
-              placeholder={`例如: ${currentPrice.toFixed(1)}`}
+              placeholder={`例如: ${fmt(currentPrice, 1)}`}
               className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-sm font-mono font-bold text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
             />
             <span className="absolute right-3 top-2 text-xs font-bold text-slate-500 pointer-events-none">
@@ -402,8 +408,10 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
             <button
               type="button"
               onClick={() => {
-                setCostInput(currentPrice.toFixed(1));
-                setIsSaved(false);
+                if (currentPrice > 0) {
+                  setCostInput(currentPrice.toFixed(1));
+                  setIsSaved(false);
+                }
               }}
               className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
             >
@@ -464,10 +472,10 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
 
             <div className="flex flex-col text-left sm:text-right">
               <span className="text-xs text-slate-400 font-medium">
-                目前現價: <strong className="text-slate-200 font-mono font-bold">{sym} {currentPrice.toFixed(1)}</strong>
+                目前現價: <strong className="text-slate-200 font-mono font-bold">{sym} {fmt(currentPrice, 1)}</strong>
               </span>
               <span className="text-xs text-slate-400 font-medium">
-                買進成本: <strong className="text-slate-200 font-mono font-bold">{sym} {cost.toFixed(1)}</strong>
+                買進成本: <strong className="text-slate-200 font-mono font-bold">{sym} {fmt(cost, 1)}</strong>
               </span>
             </div>
           </div>
@@ -475,10 +483,10 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
           {/* Visual Progress Range (SL - Cost - Current - TP1 - TP2) */}
           <div className="flex flex-col gap-1.5 px-1">
             <div className="flex justify-between text-[10px] font-bold text-slate-400">
-              <span className="text-rose-400">{direction === 'LONG' ? '停損' : '壓力'} {sym} {stopLoss.toFixed(1)}</span>
-              <span className="text-slate-400">成本 {sym} {cost.toFixed(1)}</span>
-              <span className="text-indigo-400">{direction === 'LONG' ? '目標一' : '回補一'} {sym} {target1.toFixed(1)}</span>
-              <span className="text-emerald-400">{direction === 'LONG' ? '目標二' : '回補二'} {sym} {target2.toFixed(1)}</span>
+              <span className="text-rose-400">{direction === 'LONG' ? '停損' : '壓力'} {sym} {fmt(stopLoss, 1)}</span>
+              <span className="text-slate-400">成本 {sym} {fmt(cost, 1)}</span>
+              <span className="text-indigo-400">{direction === 'LONG' ? '目標一' : '回補一'} {sym} {fmt(target1, 1)}</span>
+              <span className="text-emerald-400">{direction === 'LONG' ? '目標二' : '回補二'} {sym} {fmt(target2, 1)}</span>
             </div>
             <div className="relative w-full h-2 rounded-full bg-slate-800 overflow-hidden">
               <div
@@ -511,7 +519,7 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
                   {direction === 'LONG' ? '第一獲利目標 (TP1)' : '第一回補目標 (Cover 1)'}
                 </strong>
                 <span className="text-xs text-indigo-400 font-mono font-bold ml-2">
-                  {sym} {target1.toFixed(1)}
+                  {sym} {fmt(target1, 1)}
                 </span>
                 <p className="text-[11px] text-slate-400 m-0">
                   策略指引：建議達到時分批減碼 50%，入袋鎖利
@@ -543,7 +551,7 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
                   {direction === 'LONG' ? '第二延伸目標 (TP2)' : '第二延伸回補 (Cover 2)'}
                 </strong>
                 <span className="text-xs text-emerald-400 font-mono font-bold ml-2">
-                  {sym} {target2.toFixed(1)}
+                  {sym} {fmt(target2, 1)}
                 </span>
                 <p className="text-[11px] text-slate-400 m-0">
                   策略指引：波段主升段滿足區，建議全數出清
@@ -599,7 +607,7 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
                   Chandelier 吊燈移動停利 (鎖利防守線)
                 </strong>
                 <span className="text-xs text-cyan-400 font-mono font-bold ml-2">
-                  {sym} {trailingStopPrice.toFixed(1)}
+                  {sym} {fmt(trailingStopPrice, 1)}
                 </span>
                 <p className="text-[11px] text-slate-400 m-0">
                   策略指引：動態跟蹤最高價回撤，保護既有獲利不回吐
@@ -630,7 +638,7 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
                   {direction === 'LONG' ? '關鍵結構停損防守價 (Stop Loss)' : '放空回補防守價 (Stop Loss)'}
                 </strong>
                 <span className="text-xs text-rose-400 font-mono font-bold ml-2">
-                  {sym} {stopLoss.toFixed(1)}
+                  {sym} {fmt(stopLoss, 1)}
                 </span>
                 <p className="text-[11px] text-slate-400 m-0">
                   策略指引：有效破線請堅決停損/鎖利，嚴禁盲目凹單

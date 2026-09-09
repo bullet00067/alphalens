@@ -211,6 +211,7 @@ export const App: React.FC = () => {
   const [currentPlan, setCurrentPlan] = useState<TradingPlanData>(PREDEFINED_PLANS['3680.TWO']);
   const [stockHistory, setStockHistory] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   // Layout features: theme and overlay controls
   const [isDarkTheme, setIsDarkTheme] = useState(true);
@@ -229,6 +230,7 @@ export const App: React.FC = () => {
     let active = true;
     const loadStockDetails = async () => {
       setLoadingDetail(true);
+      setDetailError(null);
       setActiveProjection('none'); // Reset active projection
 
       try {
@@ -249,12 +251,17 @@ export const App: React.FC = () => {
 
         // 2. Fetch candle data and quotes
         const result = await fetchStockHistoryCached(normalized, '1day');
-        if (!active || !result) return;
+        if (!active) return;
+
+        if (!result || !result.candles || result.candles.length === 0) {
+          setDetailError(`無法取得標的 ${cleanTwTicker(normalized)} 的行情走勢資料，請稍後再試。`);
+          return;
+        }
 
         setStockHistory(result);
 
-        const currentPrice = result.quote.c;
-        const atr = calculateATR(result.candles, 14);
+        const currentPrice = Number(result.quote?.c) || Number(result.candles[result.candles.length - 1]?.close) || 100;
+        const atr = calculateATR(result.candles, 14) || (currentPrice * 0.02);
 
         if (plan) {
           // Preset plans will dynamically scale all levels and strategy parameters to match currentPrice
@@ -328,9 +335,6 @@ export const App: React.FC = () => {
           const trendRes = analyzeTrend(pips, analysisCandles);
 
           // Find peaks & troughs to calculate support & resistance
-          // To make support and resistance realistic and close to the current price range:
-          // We filter peaks that are above or very close to currentPrice, and troughs that are below or very close to currentPrice,
-          // then select the most recent ones chronologically (which are at the end of the PIP arrays).
           const allPeaks = pips.filter(p => p.type === 'high').map(p => p.value);
           const allTroughs = pips.filter(p => p.type === 'low').map(p => p.value);
 
@@ -349,13 +353,17 @@ export const App: React.FC = () => {
           let rawS2 = Math.min(t1, t2);
 
           // Enforce strict spatial hierarchy: S2 < S1 < currentPrice < R1 < R2
-          const { s1, s2, r1, r2 } = validateSupportResistance(
+          const validated = validateSupportResistance(
             currentPrice,
             rawS1,
             rawS2,
             rawR1,
             rawR2
           );
+          const s1 = validated.s1 || (currentPrice * 0.97);
+          const s2 = validated.s2 || (currentPrice * 0.94);
+          const r1 = validated.r1 || (currentPrice * 1.03);
+          const r2 = validated.r2 || (currentPrice * 1.06);
 
           const trendDiag: TrendDiagnosis = {
             status: trendRes.status === 'BULLISH' ? '多頭格局，走勢偏強' : trendRes.status === 'BEARISH' ? '空頭格局，震盪築底' : '區間震盪，方向確認中',
@@ -397,7 +405,7 @@ export const App: React.FC = () => {
 
           setCurrentPlan({
             ticker: normalized,
-            name: result.profile.name || cleanTwTicker(normalized),
+            name: result.profile?.name || cleanTwTicker(normalized),
             date: new Date().toLocaleDateString(),
             trend: trendDiag,
             levels,
@@ -406,8 +414,9 @@ export const App: React.FC = () => {
             confidence: Math.round(trendRes.confidence * 100)
           });
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to load details for " + currentTicker, err);
+        setDetailError(err?.message || "無法載入此標的的市場行情與歷史資料");
       } finally {
         setLoadingDetail(false);
       }
@@ -440,6 +449,7 @@ export const App: React.FC = () => {
     const normalized = normalizeTaiwanTicker(tickerSym);
     setCurrentTicker(normalized);
     setActiveView('detail');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const toggleObserve = () => {
@@ -587,6 +597,34 @@ export const App: React.FC = () => {
                 <div className="flex flex-col items-center justify-center py-20 gap-3">
                   <i className="fa-solid fa-spinner fa-spin text-3xl text-indigo-500 animate-spin"></i>
                   <span className="text-sm text-slate-400 font-bold">交易計畫載入中...</span>
+                </div>
+              ) : detailError && !stockHistory ? (
+                <div className="flex flex-col items-center justify-center py-16 px-6 bg-slate-900/60 border border-rose-500/30 rounded-3xl text-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 text-2xl">
+                    <i className="fa-solid fa-circle-exclamation"></i>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-1">行情資料載入異常</h3>
+                    <p className="text-sm text-slate-400 max-w-md">{detailError}</p>
+                  </div>
+                  <div className="flex gap-3 mt-2">
+                    <button
+                      onClick={() => setActiveView('dashboard')}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold transition-all cursor-pointer"
+                    >
+                      返回市場大盤
+                    </button>
+                    <button
+                      onClick={() => {
+                        const t = currentTicker;
+                        setCurrentTicker('');
+                        setTimeout(() => setCurrentTicker(t), 50);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all cursor-pointer"
+                    >
+                      重新整理
+                    </button>
+                  </div>
                 </div>
               ) : (
                 /* Primary Details Dashboard Layout Grid */
