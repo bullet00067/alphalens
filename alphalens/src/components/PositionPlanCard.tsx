@@ -44,14 +44,30 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
     return val.toFixed(dec);
   };
 
+  // Helper to find position by exact ticker or normalized base (e.g. 6196 vs 6196.TW)
+  const findStoredPosition = (parsed: Record<string, StoredPosition>, targetTicker: string): StoredPosition | null => {
+    if (!parsed || !targetTicker) return null;
+    if (parsed[targetTicker]) return parsed[targetTicker];
+    const cleanTarget = targetTicker.trim().toUpperCase();
+    const baseTarget = cleanTarget.replace(/\.(TW|TWO)$/i, '');
+    for (const [k, v] of Object.entries(parsed)) {
+      const cleanK = k.trim().toUpperCase();
+      const baseK = cleanK.replace(/\.(TW|TWO)$/i, '');
+      if (cleanK === cleanTarget || baseK === baseTarget) {
+        return v;
+      }
+    }
+    return null;
+  };
+
   // Load saved position whenever ticker changes
   useEffect(() => {
     const raw = localStorage.getItem('myPositions');
     if (raw) {
       try {
         const parsed: Record<string, StoredPosition> = JSON.parse(raw);
-        if (parsed[ticker]) {
-          const pos = parsed[ticker];
+        const pos = findStoredPosition(parsed, ticker);
+        if (pos) {
           setDirection(pos.direction || 'LONG');
           setSharesInput(pos.qty ? pos.qty.toString() : '1000');
           setCostInput(pos.cost ? pos.cost.toString() : currentPrice.toString());
@@ -82,13 +98,25 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
         parsed = JSON.parse(raw);
       } catch (e) {}
     }
-    parsed[ticker] = {
+    const cleanTicker = ticker.trim();
+    const baseTicker = cleanTicker.replace(/\.(TW|TWO)$/i, '');
+
+    const newPos = {
       qty: shares,
       cost,
       direction
     };
+    parsed[cleanTicker] = newPos;
+    if (baseTicker !== cleanTicker) {
+      parsed[baseTicker] = newPos;
+    }
     localStorage.setItem('myPositions', JSON.stringify(parsed));
     setIsSaved(true);
+
+    // Notify all components in the page
+    window.dispatchEvent(new CustomEvent('alphalens_position_update', { 
+      detail: { ticker: cleanTicker, position: newPos } 
+    }));
   };
 
   const handleClear = () => {
@@ -96,13 +124,21 @@ export const PositionPlanCard: React.FC<PositionPlanCardProps> = ({
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
-        delete parsed[ticker];
+        const cleanTicker = ticker.trim();
+        const baseTicker = cleanTicker.replace(/\.(TW|TWO)$/i, '');
+        delete parsed[cleanTicker];
+        delete parsed[baseTicker];
         localStorage.setItem('myPositions', JSON.stringify(parsed));
       } catch (e) {}
     }
     setSharesInput('0');
     setCostInput('');
     setIsSaved(false);
+
+    // Notify all components in the page
+    window.dispatchEvent(new CustomEvent('alphalens_position_update', { 
+      detail: { ticker, position: null } 
+    }));
   };
 
   // Select appropriate strategy targets according to direction

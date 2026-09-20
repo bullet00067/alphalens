@@ -716,6 +716,8 @@ export const App: React.FC = () => {
                       trend={currentPlan.trend}
                       levels={currentPlan.levels}
                       watchlist={watchlist}
+                      bullishStrategy={currentPlan.bullishStrategy}
+                      bearishStrategy={currentPlan.bearishStrategy}
                     />
                   </div>
                 </div>
@@ -731,6 +733,8 @@ export const App: React.FC = () => {
                 trend={currentPlan.trend}
                 levels={currentPlan.levels}
                 watchlist={watchlist}
+                bullishStrategy={currentPlan.bullishStrategy}
+                bearishStrategy={currentPlan.bearishStrategy}
               />
             </div>
           )}

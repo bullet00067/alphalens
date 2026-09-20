@@ -971,47 +971,117 @@ export function formatCompactNumber(num: number): string {
 }
 
 /**
- * call Gemini Model API for trading ideas & decisions
+ * Built-in Rule-based Local Quant Engine for instant zero-latency advisory
  */
-export async function callGeminiAPI(prompt: string, systemPrompt = ''): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    return "🚧 AI analysis is temporarily disabled (No GEMINI_API_KEY found in .env).";
+export function generateLocalQuantAdvice(prompt: string, systemPrompt: string): string {
+  // Extract key numbers and parameters from system prompt context
+  const tickerMatch = systemPrompt.match(/Current Ticker in Focus: (.+)/);
+  const ticker = tickerMatch ? tickerMatch[1] : '當前標的';
+  const priceMatch = systemPrompt.match(/Current Price: ([\d.]+)/);
+  const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+  const s1Match = systemPrompt.match(/S1: ([\d.]+)/);
+  const s1 = s1Match ? parseFloat(s1Match[1]) : 0;
+  const r1Match = systemPrompt.match(/R1: ([\d.]+)/);
+  const r1 = r1Match ? parseFloat(r1Match[1]) : 0;
+  const sharesMatch = systemPrompt.match(/User Position Shares: (\d+)/);
+  const shares = sharesMatch ? parseInt(sharesMatch[1]) : 0;
+  const costMatch = systemPrompt.match(/User Position Cost: ([\d.]+)/);
+  const cost = costMatch ? parseFloat(costMatch[1]) : 0;
+  const pnlPctMatch = systemPrompt.match(/User Position PnL Pct: ([+-]?[\d.]+)%/);
+  const pnlPct = pnlPctMatch ? parseFloat(pnlPctMatch[1]) : 0;
+  const pnlNetMatch = systemPrompt.match(/User Position PnL Amount: ([^,\n]+)/);
+  const pnlNet = pnlNetMatch ? pnlNetMatch[1] : '0';
+  const tp1Match = systemPrompt.match(/Target 1 \(TP1\): ([\d.]+)/);
+  const tp1 = tp1Match ? parseFloat(tp1Match[1]) : 0;
+  const tp2Match = systemPrompt.match(/Target 2 \(TP2\): ([\d.]+)/);
+  const tp2 = tp2Match ? parseFloat(tp2Match[1]) : 0;
+  const slMatch = systemPrompt.match(/Stop Loss \(SL\): ([\d.]+)/);
+  const sl = slMatch ? parseFloat(slMatch[1]) : 0;
+
+  const isPositionValid = shares > 0 && cost > 0;
+  const isProfit = pnlPct > 0;
+
+  // Generate tailored tactical response
+  return `### 🛡️ AlphaLens 本地量化戰術推論報告 (${ticker})
+
+**1. 當前市場定位與結構診斷**
+* **現價位置**：目前報價 **$${price > 0 ? price.toFixed(2) : '--'}**，處於支撐位 **$${s1 > 0 ? s1.toFixed(2) : '--'}** 與壓力位 **$${r1 > 0 ? r1.toFixed(2) : '--'}** 之間。
+* **盤勢關鍵**：若價格持續守穩在支撐上方，多方攻擊結構依然有效；反之若有效跌破支撐，則需提防回測更深層結構。
+
+**2. 個人持倉盈虧與風控檢驗**
+${isPositionValid ? `* **持倉狀況**：持有 **${shares} 股**，買進均價 **$${cost.toFixed(2)}**。
+* **目前損益**：**${isProfit ? '+' : ''}${pnlPct.toFixed(2)}%** (${pnlNet})。
+* **鎖利防守原則**：${isProfit && pnlPct >= 5 
+    ? `目前利潤空間已拉開 (${pnlPct.toFixed(2)}%)，**嚴禁讓已獲利的交易轉為虧損**！強烈建議將防守停損拉抬至成本價上方 (如 $${(cost * 1.01).toFixed(2)})，確保立於不敗之地。` 
+    : `目前處於成本徘徊或小幅浮虧區，需嚴格守住初始結構止損線 **$${sl > 0 ? sl.toFixed(2) : '--'}**，破線請果斷減碼退場，嚴禁凹單。`}` 
+: `* **尚未設定持倉**：建議在左側「個人持倉與動態情境計畫」輸入您的實際持股成本與股數，即可獲得專屬金額試算與加減碼建議。`}
+
+**3. 具體戰術執行指引**
+* **第一目標 (TP1 $${tp1 > 0 ? tp1.toFixed(2) : '--'})**：達到時建議**分批獲利了結 50%**，將確定利潤落袋為安。
+* **第二延伸目標 (TP2 $${tp2 > 0 ? tp2.toFixed(2) : '--'})**：剩餘半數倉位啟用動態吊燈停利，讓獲利奔馳。
+* **下檔關鍵破位線 ($${sl > 0 ? sl.toFixed(2) : '--'})**：若日線收盤確認跌破，執行防禦退場。`;
+}
+
+/**
+ * Call Gemini Model API with multi-model switching & smart local fallback
+ */
+export async function callGeminiAPI(
+  prompt: string,
+  systemPrompt = '',
+  modelName = 'gemini-2.5-flash'
+): Promise<string> {
+  // If user explicitly chose Local Quant Engine
+  if (modelName === 'local-quant') {
+    return generateLocalQuantAdvice(prompt, systemPrompt);
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+  if (!GEMINI_API_KEY) {
+    return `*(未配置 GEMINI_API_KEY，已自動啟用本地量化戰術引擎)*\n\n${generateLocalQuantAdvice(prompt, systemPrompt)}`;
+  }
+
+  // Safe mapping of model name
+  let targetModel = modelName;
+  if (!targetModel.startsWith('gemini-')) {
+    targetModel = 'gemini-2.5-flash';
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${GEMINI_API_KEY.trim()}`;
   const payload = {
     contents: [
       {
         parts: [
-          { text: systemPrompt ? `${systemPrompt}\n\nUser Question:\n${prompt}` : prompt }
+          { text: systemPrompt ? `${systemPrompt}\n\n【使用者即時諮詢】：\n${prompt}` : prompt }
         ]
       }
-    ]
+    ],
+    generationConfig: {
+      temperature: targetModel.includes('pro') ? 0.3 : 0.2,
+      maxOutputTokens: 2048,
+    }
   };
 
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': GEMINI_API_KEY.trim()
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
       const errorText = await res.text();
-      console.error("Gemini API Error:", errorText);
-      throw new Error(`API Error ${res.status}`);
+      console.warn(`Gemini API returned status ${res.status} for ${targetModel}:`, errorText);
+      throw new Error(`API ${res.status}: ${errorText.slice(0, 150)}`);
     }
 
     const data = await res.json();
-    if (data.candidates && data.candidates.length > 0) {
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content?.parts?.[0]?.text) {
       return data.candidates[0].content.parts[0].text;
     }
-    return "No response generated.";
+    return generateLocalQuantAdvice(prompt, systemPrompt);
   } catch (err) {
-    console.error("Failed callGeminiAPI:", err);
-    return `Error: ${err instanceof Error ? err.message : String(err)}`;
+    console.warn("Gemini call failed, falling back to local quant advice:", err);
+    return `*(因遠端 API 連線或配額限制，已自動為您切換至 AlphaLens 本地量化戰術引擎)*\n\n${generateLocalQuantAdvice(prompt, systemPrompt)}`;
   }
 }

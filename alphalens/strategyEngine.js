@@ -913,3 +913,31 @@ export function generatePIPSignal(candles, providedPips = null) {
     finalSignal.probability = calculateProbability(finalSignal, trend, candles);
     return finalSignal;
 }
+
+/**
+ * Match and resolve saved position by ticker with suffix-tolerance (.TW / .TWO)
+ */
+export function resolveStoredPosition(myPositionsMap, targetTicker) {
+    if (!myPositionsMap || !targetTicker) return null;
+    const cleanTarget = String(targetTicker).trim().toUpperCase();
+    const baseTarget = cleanTarget.replace(/\.(TW|TWO)$/i, '');
+
+    for (const [k, v] of Object.entries(myPositionsMap)) {
+        if (!v) continue;
+        const cleanK = String(k).trim().toUpperCase();
+        const baseK = cleanK.replace(/\.(TW|TWO)$/i, '');
+        if (cleanK === cleanTarget || baseK === baseTarget) {
+            const qty = Number(v.qty ?? v.shares ?? 0);
+            const cost = Number(v.cost ?? 0);
+            if (qty > 0 && cost > 0) {
+                return {
+                    shares: qty,
+                    cost,
+                    direction: (v.direction === 'SHORT' ? 'SHORT' : 'LONG')
+                };
+            }
+        }
+    }
+    return null;
+}
+

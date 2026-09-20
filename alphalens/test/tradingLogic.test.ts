@@ -7,6 +7,7 @@ import {
   validateSupportResistance,
   validateRiskReward
 } from '../src/utils/tradingValidators';
+import { resolveStoredPosition } from '../strategyEngine.js';
 
 describe('AlphaLens Trading Domain Invariants & Logic Protection Suite', () => {
   it('1. Market Friction: US stocks must have 0% tax, 0% broker fee and "$" currency', () => {
@@ -136,4 +137,30 @@ describe('AlphaLens Trading Domain Invariants & Logic Protection Suite', () => {
     expect(validResult.isValid).toBe(true);
     expect(validResult.label).toBe('2.0 : 1');
   });
+
+  it('7. Position Storage & Ticker Resolution: 6196 vs 6196.TW bidirectional matching', () => {
+    // Case A: User saved with '6196', query with '6196.TW'
+    const storageA = {
+      '6196': { qty: 1000, cost: 150.5, direction: 'LONG' }
+    };
+    const resolvedA = resolveStoredPosition(storageA, '6196.TW');
+    expect(resolvedA).not.toBeNull();
+    expect(resolvedA?.shares).toBe(1000);
+    expect(resolvedA?.cost).toBe(150.5);
+    expect(resolvedA?.direction).toBe('LONG');
+
+    // Case B: User saved with '6196.TW', query with '6196'
+    const storageB = {
+      '6196.TW': { qty: 2000, cost: 160.0, direction: 'LONG' }
+    };
+    const resolvedB = resolveStoredPosition(storageB, '6196');
+    expect(resolvedB).not.toBeNull();
+    expect(resolvedB?.shares).toBe(2000);
+    expect(resolvedB?.cost).toBe(160.0);
+
+    // Case C: Empty or non-existing ticker
+    const resolvedC = resolveStoredPosition(storageB, '2330.TW');
+    expect(resolvedC).toBeNull();
+  });
 });
+
