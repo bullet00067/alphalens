@@ -8,6 +8,12 @@ import {
   validateRiskReward
 } from '../src/utils/tradingValidators';
 import { resolveStoredPosition } from '../strategyEngine.js';
+import {
+  resolveTicker,
+  searchStockSuggestions,
+  getTaiwanStockName,
+  normalizeTaiwanTicker
+} from '../src/utils/api';
 
 describe('AlphaLens Trading Domain Invariants & Logic Protection Suite', () => {
   it('1. Market Friction: US stocks must have 0% tax, 0% broker fee and "$" currency', () => {
@@ -162,5 +168,32 @@ describe('AlphaLens Trading Domain Invariants & Logic Protection Suite', () => {
     const resolvedC = resolveStoredPosition(storageB, '2330.TW');
     expect(resolvedC).toBeNull();
   });
+
+  it('8. Comprehensive Taiwan Stock Search: 和碩, 聯詠, 家登, OTC detection', async () => {
+    // 1. Chinese name direct resolution
+    expect(resolveTicker('和碩')).toBe('4938.TW');
+    expect(resolveTicker('家登')).toBe('3680.TWO');
+    expect(resolveTicker('聯詠')).toBe('3034.TW');
+    expect(resolveTicker('廣運')).toBe('6125.TWO');
+
+    // 2. 4-digit code resolution
+    expect(resolveTicker('4938')).toBe('4938.TW');
+    expect(resolveTicker('3680')).toBe('3680.TWO');
+    expect(normalizeTaiwanTicker('4938')).toBe('4938.TW');
+    expect(normalizeTaiwanTicker('6125')).toBe('6125.TWO');
+
+    // 3. Name lookup from code
+    const namePegatron = await getTaiwanStockName('4938.TW');
+    expect(namePegatron).toBe('和碩');
+    const nameGudeng = await getTaiwanStockName('3680.TWO');
+    expect(nameGudeng).toBe('家登');
+
+    // 4. Autocomplete suggestions for "和碩"
+    const suggestions = searchStockSuggestions('和碩');
+    expect(suggestions.length).toBeGreaterThan(0);
+    expect(suggestions[0].name).toBe('和碩');
+    expect(suggestions[0].ticker).toBe('4938.TW');
+  });
 });
+
 

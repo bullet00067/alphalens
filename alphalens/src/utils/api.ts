@@ -1,4 +1,10 @@
 import { Candle } from './strategyEngine';
+import { 
+  ALL_TAIWAN_STOCKS, 
+  CODE_TO_NAME_MAP, 
+  NAME_TO_TICKER_MAP, 
+  TPEX_CODE_SET 
+} from './taiwanStockDirectory';
 
 // API Bases
 const FINMIND_BASE = '/finmind';
@@ -150,6 +156,8 @@ export function isTaiwanStock(ticker: string): boolean {
   if (!ticker) return false;
   const clean = ticker.trim();
   if (/[\u4e00-\u9fa5]/.test(clean)) return true;
+  const cleanCode = cleanTwTicker(clean);
+  if (CODE_TO_NAME_MAP[cleanCode] || TPEX_CODE_SET.has(cleanCode)) return true;
   return /^\d{4,6}$/.test(clean) || clean.endsWith('.TW') || clean.endsWith('.TWO') || clean === '^TWII';
 }
 
@@ -159,12 +167,14 @@ export function isTaiwanStock(ticker: string): boolean {
 export function normalizeTaiwanTicker(input: string): string {
   if (!input) return '';
   const resolved = resolveTicker(input);
-  if (resolved.endsWith('.TW') || resolved.endsWith('.TWO')) {
+  if (resolved.endsWith('.TW') || resolved.endsWith('.TWO') || resolved.startsWith('^')) {
     return resolved;
   }
   const clean = cleanTwTicker(resolved);
   if (/^\d{4,6}$/.test(clean)) {
-    return KNOWN_OTC_STOCKS.has(clean) ? `${clean}.TWO` : `${clean}.TW`;
+    return (TPEX_CODE_SET.has(clean) || KNOWN_OTC_STOCKS.has(clean)) 
+      ? `${clean}.TWO` 
+      : `${clean}.TW`;
   }
   return resolved;
 }
@@ -176,58 +186,117 @@ export function resolveTicker(input: string): string {
   if (!input) return '';
   const cleanInput = input.trim();
 
-  // 1. Direct match in TW_NAME_MAP
+  // 1. Direct match in NAME_TO_TICKER_MAP (covers all ~2000 TWSE & TPEx stocks & aliases)
+  if (NAME_TO_TICKER_MAP[cleanInput]) return NAME_TO_TICKER_MAP[cleanInput];
+
+  // 2. Direct match in TW_NAME_MAP
   if (TW_NAME_MAP[cleanInput]) return TW_NAME_MAP[cleanInput];
 
-  // 2. Fuzzy match in TW_NAME_MAP by name or code
+  // 3. Exact 4-digit code lookup
+  const cleanCode = cleanTwTicker(cleanInput);
+  if (/^\d{4,6}$/.test(cleanCode)) {
+    if (NAME_TO_TICKER_MAP[cleanCode]) return NAME_TO_TICKER_MAP[cleanCode];
+    return (TPEX_CODE_SET.has(cleanCode) || KNOWN_OTC_STOCKS.has(cleanCode))
+      ? `${cleanCode}.TWO`
+      : `${cleanCode}.TW`;
+  }
+
+  // 4. Match in ALL_TAIWAN_STOCKS (exact or clean contains)
+  const matched = ALL_TAIWAN_STOCKS.find(s => 
+    s.name === cleanInput || 
+    s.name.includes(cleanInput) || 
+    cleanInput.includes(s.name)
+  );
+  if (matched) return matched.ticker;
+
+  // 5. Fuzzy match in TW_NAME_MAP by name or code
   for (const [name, sym] of Object.entries(TW_NAME_MAP)) {
     if (name.includes(cleanInput) || cleanInput.includes(name)) {
       return sym;
     }
-    const cleanSym = cleanTwTicker(sym);
-    if (cleanSym === cleanInput) {
-      return sym;
-    }
-  }
-
-  // 3. If it's a 4-digit code, check OTC or TWSE
-  if (/^\d{4,6}$/.test(cleanInput)) {
-    return KNOWN_OTC_STOCKS.has(cleanInput) ? `${cleanInput}.TWO` : `${cleanInput}.TW`;
   }
 
   return cleanInput.toUpperCase();
 }
 
 /**
- * Search autocomplete suggestions across common stocks and direct ticker input
+ * Search autocomplete suggestions across comprehensive Taiwan stocks, US stocks and indices
  */
 export function searchStockSuggestions(query: string): Array<{ name: string; ticker: string }> {
   if (!query || !query.trim()) return [];
   const q = query.trim().toLowerCase();
+  const cleanQ = cleanTwTicker(query).toLowerCase();
   const results: Array<{ name: string; ticker: string }> = [];
+  const seenTickers = new Set<string>();
 
-  // Match from TW_NAME_MAP
-  for (const [name, sym] of Object.entries(TW_NAME_MAP)) {
-    const cleanSym = cleanTwTicker(sym).toLowerCase();
-    if (name.toLowerCase().includes(q) || cleanSym.includes(q) || sym.toLowerCase().includes(q)) {
-      results.push({ name, ticker: sym });
+  // 1. Exact match
+  for (const item of ALL_TAIWAN_STOCKS) {
+    const nameLower = item.name.toLowerCase();
+    const codeLower = item.code.toLowerCase();
+    if (nameLower === q || codeLower === cleanQ) {
+      if (!seenTickers.has(item.ticker)) {
+        seenTickers.add(item.ticker);
+        results.push({ name: item.name, ticker: item.ticker });
+      }
     }
   }
 
-  // If query is a 4-digit number not yet in results, offer a direct candidate
+  // 2. Starts-with match
+  for (const item of ALL_TAIWAN_STOCKS) {
+    const nameLower = item.name.toLowerCase();
+    const codeLower = item.code.toLowerCase();
+    if (nameLower.startsWith(q) || codeLower.startsWith(cleanQ)) {
+      if (!seenTickers.has(item.ticker)) {
+        seenTickers.add(item.ticker);
+        results.push({ name: item.name, ticker: item.ticker });
+      }
+    }
+    if (results.length >= 10) break;
+  }
+
+  // 3. Contains match
+  if (results.length < 10) {
+    for (const item of ALL_TAIWAN_STOCKS) {
+      const nameLower = item.name.toLowerCase();
+      const codeLower = item.code.toLowerCase();
+      if (nameLower.includes(q) || codeLower.includes(cleanQ)) {
+        if (!seenTickers.has(item.ticker)) {
+          seenTickers.add(item.ticker);
+          results.push({ name: item.name, ticker: item.ticker });
+        }
+      }
+      if (results.length >= 10) break;
+    }
+  }
+
+  // 4. TW_NAME_MAP fallback (indices & US stocks)
+  if (results.length < 10) {
+    for (const [name, sym] of Object.entries(TW_NAME_MAP)) {
+      if (name.toLowerCase().includes(q) || sym.toLowerCase().includes(q)) {
+        if (!seenTickers.has(sym)) {
+          seenTickers.add(sym);
+          results.push({ name, ticker: sym });
+        }
+      }
+      if (results.length >= 10) break;
+    }
+  }
+
+  // 5. If query is a 4-digit code not yet in results
   if (/^\d{4,6}$/.test(query.trim())) {
     const clean = query.trim();
-    const isAlreadyIncluded = results.some(r => cleanTwTicker(r.ticker) === clean);
-    if (!isAlreadyIncluded) {
-      const canonical = KNOWN_OTC_STOCKS.has(clean) ? `${clean}.TWO` : `${clean}.TW`;
+    if (!seenTickers.has(`${clean}.TW`) && !seenTickers.has(`${clean}.TWO`)) {
+      const canonical = (TPEX_CODE_SET.has(clean) || KNOWN_OTC_STOCKS.has(clean))
+        ? `${clean}.TWO`
+        : `${clean}.TW`;
       results.unshift({
-        name: `台股代號 ${clean}`,
+        name: CODE_TO_NAME_MAP[clean] || `台股代號 ${clean}`,
         ticker: canonical
       });
     }
   }
 
-  return results.slice(0, 8);
+  return results.slice(0, 10);
 }
 
 /**
@@ -828,19 +897,12 @@ export async function fetchStockHistoryCached(ticker: string, resolution = '1day
 export async function getTaiwanStockName(ticker: string): Promise<string> {
   if (!isTaiwanStock(ticker)) return '';
   const cleanTicker = cleanTwTicker(ticker);
-  const hardcoded: Record<string, string> = {
-    '2330': '台積電',
-    '2317': '鴻海',
-    '8299': '群聯',
-    '2454': '聯發科',
-    '2603': '長榮',
-    '2609': '陽明',
-    '2615': '萬海',
-    '3680': '家登'
-  };
-  if (hardcoded[cleanTicker]) return hardcoded[cleanTicker];
+
+  // 1. Fast static lookup in comprehensive directory
+  if (CODE_TO_NAME_MAP[cleanTicker]) return CODE_TO_NAME_MAP[cleanTicker];
   if (twStockNames[cleanTicker]) return twStockNames[cleanTicker];
 
+  // 2. FinMind fallback
   try {
     const url = `${FINMIND_BASE}?dataset=TaiwanStockInfo&data_id=${cleanTicker}`;
     const data = await fetchWithProxy(url);
