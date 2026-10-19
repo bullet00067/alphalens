@@ -13,7 +13,7 @@ import {
 } from 'lightweight-charts';
 import { Candle, findPIPs, calculateATR, calculateADX } from '../utils/strategyEngine';
 import { KeyLevels, StrategyCondition } from '../types/trading';
-import { cleanTwTicker, formatCompactNumber } from '../utils/api';
+import { cleanTwTicker, formatCompactNumber, ChartTimeframe } from '../utils/api';
 
 interface TradingChartProps {
   ticker: string;
@@ -25,6 +25,9 @@ interface TradingChartProps {
   isVolumeEnabled: boolean;
   activeProjection: 'none' | 'bullish' | 'bearish';
   onProjectionChange: (proj: 'none' | 'bullish' | 'bearish') => void;
+  timeframe?: ChartTimeframe;
+  onTimeframeChange?: (tf: ChartTimeframe) => void;
+  loadingTimeframe?: boolean;
 }
 
 export const TradingChart: React.FC<TradingChartProps> = ({
@@ -36,7 +39,10 @@ export const TradingChart: React.FC<TradingChartProps> = ({
   isPipOverlayEnabled,
   isVolumeEnabled,
   activeProjection,
-  onProjectionChange
+  onProjectionChange,
+  timeframe = '1d',
+  onTimeframeChange,
+  loadingTimeframe = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -84,13 +90,18 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     const isNumeric = typeof lastDate === 'number';
 
     while (dates.length < count) {
-      curr.setDate(curr.getDate() + 1);
-      const day = curr.getDay();
-      if (day !== 0 && day !== 6) { // skip weekends
-        if (isNumeric) {
-          dates.push(Math.floor(curr.getTime() / 1000));
-        } else {
-          dates.push(curr.toISOString().split('T')[0]);
+      if (timeframe === '1wk') {
+        curr.setDate(curr.getDate() + 7);
+        dates.push(curr.toISOString().split('T')[0]);
+      } else {
+        curr.setDate(curr.getDate() + 1);
+        const day = curr.getDay();
+        if (day !== 0 && day !== 6) { // skip weekends
+          if (isNumeric) {
+            dates.push(Math.floor(curr.getTime() / 1000));
+          } else {
+            dates.push(curr.toISOString().split('T')[0]);
+          }
         }
       }
     }
@@ -143,7 +154,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       },
       timeScale: {
         borderColor: 'rgba(51, 65, 85, 0.5)',
-        timeVisible: true,
+        timeVisible: timeframe === '60m',
+        secondsVisible: false,
         rightOffset: 12,
       },
     });
@@ -162,7 +174,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
     // Format and load data
     const chartData: CandlestickData[] = candles.map(c => ({
-      time: c.time as string,
+      time: c.time as any,
       open: c.open,
       high: c.high,
       low: c.low,
@@ -187,7 +199,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     });
 
     const volumeData = candles.map(c => ({
-      time: c.time as string,
+      time: c.time as any,
       value: c.volume,
       color: c.close >= c.open ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)',
     }));
@@ -206,7 +218,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     if (isPipOverlayEnabled) {
       const pips = findPIPs(candles);
       const pipData: LineData[] = pips.map(p => ({
-        time: p.time as string,
+        time: p.time as any,
         value: p.value,
       }));
       pipSeries.setData(pipData);
@@ -215,7 +227,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const markers = pips.map(p => {
         const isHigh = p.type === 'high';
         return {
-          time: p.time as string,
+          time: p.time as any,
           position: (isHigh ? 'aboveBar' : 'belowBar') as 'aboveBar' | 'belowBar',
           color: isHigh ? '#f87171' : '#34d399', // bright red / bright emerald
           shape: (isHigh ? 'arrowDown' : 'arrowUp') as 'arrowDown' | 'arrowUp',
@@ -334,17 +346,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const finalPrice = Math.max(bullishStrategy.targets[1] || levels.resistance2 * 1.08, breakoutPrice * 1.02);
 
       // Generate daily path data points for smooth line rendering and volatility cone overlay
-      const bullishData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
-      const upperData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
-      const lowerData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
+      const bullishData: LineData[] = [{ time: lastCandle.time as any, value: startPrice }];
+      const upperData: LineData[] = [{ time: lastCandle.time as any, value: startPrice }];
+      const lowerData: LineData[] = [{ time: lastCandle.time as any, value: startPrice }];
 
       for (let t = 0; t < futureTimes.length; t++) {
         const centerPrice = getBullishPriceAt(t, startPrice, breakoutPrice, pullbackPrice, finalPrice);
         const halfWidth = sigma0 * Math.sqrt(t + 1) * 1.5; // +/- 1.5 standard deviation width
         
-        bullishData.push({ time: futureTimes[t], value: centerPrice });
-        upperData.push({ time: futureTimes[t], value: centerPrice + halfWidth });
-        lowerData.push({ time: futureTimes[t], value: centerPrice - halfWidth });
+        bullishData.push({ time: futureTimes[t] as any, value: centerPrice });
+        upperData.push({ time: futureTimes[t] as any, value: centerPrice + halfWidth });
+        lowerData.push({ time: futureTimes[t] as any, value: centerPrice - halfWidth });
       }
 
       bullishProjSeries.setData(bullishData);
@@ -371,17 +383,17 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const finalPrice = Math.min(bearishStrategy.targets[1] || levels.support2 * 0.92, breakdownPrice * 0.98);
 
       // Generate daily path data points for smooth line rendering and volatility cone overlay
-      const bearishData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
-      const upperData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
-      const lowerData: LineData[] = [{ time: lastCandle.time, value: startPrice }];
+      const bearishData: LineData[] = [{ time: lastCandle.time as any, value: startPrice }];
+      const upperData: LineData[] = [{ time: lastCandle.time as any, value: startPrice }];
+      const lowerData: LineData[] = [{ time: lastCandle.time as any, value: startPrice }];
 
       for (let t = 0; t < futureTimes.length; t++) {
         const centerPrice = getBearishPriceAt(t, startPrice, breakdownPrice, bouncePrice, finalPrice);
         const halfWidth = sigma0 * Math.sqrt(t + 1) * 1.5; // +/- 1.5 standard deviation width
         
-        bearishData.push({ time: futureTimes[t], value: centerPrice });
-        upperData.push({ time: futureTimes[t], value: centerPrice + halfWidth });
-        lowerData.push({ time: futureTimes[t], value: centerPrice - halfWidth });
+        bearishData.push({ time: futureTimes[t] as any, value: centerPrice });
+        upperData.push({ time: futureTimes[t] as any, value: centerPrice + halfWidth });
+        lowerData.push({ time: futureTimes[t] as any, value: centerPrice - halfWidth });
       }
 
       bearishProjSeries.setData(bearishData);
@@ -458,13 +470,34 @@ export const TradingChart: React.FC<TradingChartProps> = ({
     hoverTooltip.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.5)';
     container.appendChild(hoverTooltip);
 
+    const formatTooltipTime = (timeVal: string | number) => {
+      if (typeof timeVal === 'number') {
+        const d = new Date(timeVal * 1000);
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const hh = String(d.getUTCHours()).padStart(2, '0');
+        const mm = String(d.getUTCMinutes()).padStart(2, '0');
+        return `${y}-${m}-${day} ${hh}:${mm}`;
+      }
+      return String(timeVal);
+    };
+
     const crosshairListener = (param: any) => {
       if (!param.time || !param.point) {
         hoverTooltip.style.display = 'none';
         return;
       }
 
-      const candle = candles.find(c => c.time === param.time);
+      const candle = candles.find(c => {
+        if (c.time === param.time) return true;
+        if (typeof param.time === 'object' && param.time !== null) {
+          const formatted = `${param.time.year}-${String(param.time.month).padStart(2, '0')}-${String(param.time.day).padStart(2, '0')}`;
+          return c.time === formatted;
+        }
+        return false;
+      });
+
       if (candle) {
         const isUp = candle.close >= candle.open;
         hoverTooltip.style.display = 'block';
@@ -472,7 +505,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         hoverTooltip.style.top = `${param.point.y + 15}px`;
         hoverTooltip.style.borderColor = isUp ? '#10b981' : '#ef4444';
         hoverTooltip.innerHTML = `
-          <div style="font-weight: 600; margin-bottom: 2px;">${candle.time}</div>
+          <div style="font-weight: 600; margin-bottom: 2px;">${formatTooltipTime(candle.time)}</div>
           <div style="display: grid; grid-template-columns: auto auto; gap: x-4; column-gap: 8px;">
             <span>開盤:</span> <span style="text-align: right;">${candle.open.toFixed(2)}</span>
             <span>收盤:</span> <span style="text-align: right; font-weight:600; color:${isUp ? '#10b981' : '#ef4444'}">${candle.close.toFixed(2)}</span>
@@ -514,7 +547,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         hoverTooltip.parentNode.removeChild(hoverTooltip);
       }
     };
-  }, [candles, levels, bullishStrategy, bearishStrategy, isPipOverlayEnabled, activeProjection]);
+  }, [candles, levels, bullishStrategy, bearishStrategy, isPipOverlayEnabled, activeProjection, timeframe]);
 
   // 2. Control Visibility of Volume overlay
   useEffect(() => {
@@ -563,7 +596,8 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       },
       timeScale: {
         borderColor: 'rgba(51, 65, 85, 0.5)',
-        timeVisible: true,
+        timeVisible: timeframe === '60m',
+        secondsVisible: false,
         rightOffset: 12,
       },
     });
@@ -589,7 +623,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
             let avgLoss = losses / period;
             const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
             const rsi = 100 - 100 / (1 + rs);
-            rsiValues.push({ time: candles[i].time as string, value: rsi });
+            rsiValues.push({ time: candles[i].time as any, value: rsi });
           }
         } else {
           const avgGain = (gains * (period - 1) + (diff > 0 ? diff : 0)) / period;
@@ -599,7 +633,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
 
           const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
           const rsi = 100 - 100 / (1 + rs);
-          rsiValues.push({ time: candles[i].time as string, value: rsi });
+          rsiValues.push({ time: candles[i].time as any, value: rsi });
         }
       }
 
@@ -651,7 +685,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const pipData: LineData[] = candles.map(c => {
         const stdY = (Math.log10(c.close) - mean) / std;
         return {
-          time: c.time as string,
+          time: c.time as any,
           value: stdY,
         };
       });
@@ -687,7 +721,7 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       const tacticalMarkers = pips.map(p => {
         const isHigh = p.type === 'high';
         return {
-          time: p.time as string,
+          time: p.time as any,
           position: 'inBar' as 'inBar',
           color: isHigh ? '#f87171' : '#34d399',
           shape: 'circle' as 'circle',
@@ -781,82 +815,141 @@ export const TradingChart: React.FC<TradingChartProps> = ({
       }
     };
 
-  }, [subchartType, candles]);
+  }, [subchartType, candles, timeframe]);
 
   return (
     <div className="flex flex-col gap-4 w-full h-full">
       {/* Chart Control Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/50 backdrop-blur-md border border-slate-800/80">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-semibold text-slate-300">副圖指標:</span>
-          <button
-            onClick={() => setSubchartType('none')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 cursor-pointer ${
-              subchartType === 'none'
-                ? 'bg-slate-800 text-white border-slate-700'
-                : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
-            }`}
-          >
-            無
-          </button>
-          <button
-            onClick={() => setSubchartType('rsi')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 cursor-pointer ${
-              subchartType === 'rsi'
-                ? 'bg-purple-600/30 text-purple-200 border-purple-500/50'
-                : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
-            }`}
-          >
-            RSI 強弱指標
-          </button>
-          <button
-            onClick={() => setSubchartType('pip')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 cursor-pointer ${
-              subchartType === 'pip'
-                ? 'bg-amber-600/30 text-amber-200 border-amber-500/50'
-                : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
-            }`}
-          >
-            PIP 戰術形態 (Z-Score)
-          </button>
-        </div>
+        {/* Left Side: Timeframe Switcher & Subchart Selector */}
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Timeframe Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-300">週期:</span>
+            <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+              <button
+                onClick={() => onTimeframeChange?.('60m')}
+                disabled={loadingTimeframe}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  timeframe === '60m'
+                    ? 'bg-indigo-600 text-white font-bold shadow-sm shadow-indigo-500/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                } ${loadingTimeframe ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                60分
+              </button>
+              <button
+                onClick={() => onTimeframeChange?.('1d')}
+                disabled={loadingTimeframe}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  timeframe === '1d' || !timeframe
+                    ? 'bg-indigo-600 text-white font-bold shadow-sm shadow-indigo-500/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                } ${loadingTimeframe ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                日線
+              </button>
+              <button
+                onClick={() => onTimeframeChange?.('1wk')}
+                disabled={loadingTimeframe}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  timeframe === '1wk'
+                    ? 'bg-indigo-600 text-white font-bold shadow-sm shadow-indigo-500/30'
+                    : 'text-slate-400 hover:text-slate-200'
+                } ${loadingTimeframe ? 'opacity-60 cursor-not-allowed' : ''}`}
+              >
+                週線
+              </button>
+            </div>
+            {loadingTimeframe && (
+              <span className="text-xs text-indigo-400 flex items-center gap-1.5 animate-pulse ml-1">
+                <i className="fa-solid fa-circle-notch fa-spin"></i>
+                載入中...
+              </span>
+            )}
+          </div>
 
-        {/* Projection Switcher */}
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-slate-300">路徑預測:</span>
-          <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+          <div className="h-5 w-px bg-slate-800 hidden sm:block"></div>
+
+          {/* Subchart Selector */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-slate-300">副圖:</span>
             <button
-              onClick={() => onProjectionChange('none')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                activeProjection === 'none'
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setSubchartType('none')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 cursor-pointer ${
+                subchartType === 'none'
+                  ? 'bg-slate-800 text-white border-slate-700'
+                  : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
-              關閉
+              無
             </button>
             <button
-              onClick={() => onProjectionChange('bullish')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                activeProjection === 'bullish'
-                  ? 'bg-yellow-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setSubchartType('rsi')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 cursor-pointer ${
+                subchartType === 'rsi'
+                  ? 'bg-purple-600/30 text-purple-200 border-purple-500/50'
+                  : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
-              多頭路徑 (黃)
+              RSI 強弱指標
             </button>
             <button
-              onClick={() => onProjectionChange('bearish')}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                activeProjection === 'bearish'
-                  ? 'bg-emerald-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setSubchartType('pip')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-200 cursor-pointer ${
+                subchartType === 'pip'
+                  ? 'bg-amber-600/30 text-amber-200 border-amber-500/50'
+                  : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
               }`}
             >
-              空頭路徑 (綠)
+              PIP 戰術形態 (Z-Score)
             </button>
           </div>
         </div>
+
+        {/* Right Side: Projection Switcher (Hidden in 60m as agreed) */}
+        {timeframe !== '60m' ? (
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-300">路徑預測:</span>
+            <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+              <button
+                onClick={() => onProjectionChange('none')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  activeProjection === 'none'
+                    ? 'bg-slate-800 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                關閉
+              </button>
+              <button
+                onClick={() => onProjectionChange('bullish')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  activeProjection === 'bullish'
+                    ? 'bg-yellow-500 text-slate-950 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                多頭路徑 (黃)
+              </button>
+              <button
+                onClick={() => onProjectionChange('bearish')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                  activeProjection === 'bearish'
+                    ? 'bg-emerald-500 text-slate-950 font-bold'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                空頭路徑 (綠)
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-400 bg-slate-950/70 px-3 py-1.5 rounded-lg border border-slate-800/80 flex items-center gap-1.5">
+            <i className="fa-solid fa-circle-info text-indigo-400"></i>
+            <span>60分線為短線結構，波段路徑預測請切換至日線或週線</span>
+          </div>
+        )}
       </div>
 
       {/* Main Candlestick Chart */}
@@ -880,7 +973,9 @@ export const TradingChart: React.FC<TradingChartProps> = ({
         <div className="absolute top-4 left-4 pointer-events-none flex flex-col gap-1 z-10 select-none">
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold tracking-wider text-slate-100">{cleanTwTicker(ticker)}</span>
-            <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 uppercase font-semibold">1D 日線圖</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 uppercase font-semibold">
+              {timeframe === '60m' ? '60M 60分線' : timeframe === '1wk' ? '1W 週線圖' : '1D 日線圖'}
+            </span>
           </div>
           {isPipOverlayEnabled && (
             <div className="text-xs text-amber-400 flex items-center gap-1 font-medium bg-amber-500/5 px-2 py-1 rounded border border-amber-500/10">

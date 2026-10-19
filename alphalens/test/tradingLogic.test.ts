@@ -12,7 +12,8 @@ import {
   resolveTicker,
   searchStockSuggestions,
   getTaiwanStockName,
-  normalizeTaiwanTicker
+  normalizeTaiwanTicker,
+  aggregateCandles
 } from '../src/utils/api';
 
 describe('AlphaLens Trading Domain Invariants & Logic Protection Suite', () => {
@@ -193,6 +194,43 @@ describe('AlphaLens Trading Domain Invariants & Logic Protection Suite', () => {
     expect(suggestions.length).toBeGreaterThan(0);
     expect(suggestions[0].name).toBe('和碩');
     expect(suggestions[0].ticker).toBe('4938.TW');
+  });
+
+  it('9. Timeframe Transformation & Weekly Candle Aggregation Invariants', () => {
+    // 5 daily candles from Mon 2024-10-14 to Fri 2024-10-18
+    const dailyCandles = [
+      { time: '2024-10-14', open: 100, high: 105, low: 99, close: 103, volume: 1000 },
+      { time: '2024-10-15', open: 103, high: 108, low: 102, close: 107, volume: 1200 },
+      { time: '2024-10-16', open: 107, high: 110, low: 106, close: 109, volume: 1500 },
+      { time: '2024-10-17', open: 109, high: 111, low: 104, close: 105, volume: 1100 },
+      { time: '2024-10-18', open: 105, high: 106, low: 98, close: 102, volume: 2000 },
+    ];
+
+    const weekly = aggregateCandles(dailyCandles, '1week');
+    expect(weekly.length).toBe(1);
+
+    const w = weekly[0];
+    expect(w.open).toBe(100); // Monday open
+    expect(w.close).toBe(102); // Friday close
+    expect(w.high).toBe(111); // Max high across all 5 days
+    expect(w.low).toBe(98); // Min low across all 5 days
+    expect(w.volume).toBe(6800); // Sum of volumes
+    expect(w.time).toBe('2024-10-14'); // Monday date
+
+    // Cross-month week (e.g. 2024-10-28 Mon to 2024-11-01 Fri)
+    const crossMonthCandles = [
+      { time: '2024-10-30', open: 200, high: 210, low: 198, close: 205, volume: 500 },
+      { time: '2024-10-31', open: 205, high: 208, low: 202, close: 207, volume: 600 },
+      { time: '2024-11-01', open: 207, high: 215, low: 206, close: 212, volume: 700 },
+    ];
+    const crossMonthWeekly = aggregateCandles(crossMonthCandles, '1wk');
+    expect(crossMonthWeekly.length).toBe(1);
+    expect(crossMonthWeekly[0].time).toBe('2024-10-28');
+    expect(crossMonthWeekly[0].open).toBe(200);
+    expect(crossMonthWeekly[0].close).toBe(212);
+    expect(crossMonthWeekly[0].high).toBe(215);
+    expect(crossMonthWeekly[0].low).toBe(198);
+    expect(crossMonthWeekly[0].volume).toBe(1800);
   });
 });
 

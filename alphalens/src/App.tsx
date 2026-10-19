@@ -14,10 +14,12 @@ import {
   normalizeTaiwanTicker,
   cleanTwTicker,
   fetchStockHistoryCached,
+  fetchChartCandles,
+  ChartTimeframe,
   getTaiwanStockName,
   getQuickQuote
 } from './utils/api';
-import { findPIPs, analyzeTrend, generatePIPSignal, calculateATR } from './utils/strategyEngine';
+import { Candle, findPIPs, analyzeTrend, generatePIPSignal, calculateATR } from './utils/strategyEngine';
 import { validateSupportResistance } from './utils/tradingValidators';
 
 // Pre-defined plans
@@ -220,6 +222,38 @@ export const App: React.FC = () => {
   const [activeProjection, setActiveProjection] = useState<'none' | 'bullish' | 'bearish'>('none');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Timeframe for technical chart (independent from trading plan)
+  const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>(() => {
+    return (localStorage.getItem('alphalens_chart_timeframe') as ChartTimeframe) || '1d';
+  });
+  const [chartCandles, setChartCandles] = useState<Candle[] | null>(null);
+  const [loadingChartTimeframe, setLoadingChartTimeframe] = useState(false);
+
+  const handleTimeframeChange = async (newTf: ChartTimeframe) => {
+    if (newTf === chartTimeframe) return;
+    setChartTimeframe(newTf);
+    localStorage.setItem('alphalens_chart_timeframe', newTf);
+    if (newTf === '60m') {
+      setActiveProjection('none');
+    }
+    if (newTf === '1d') {
+      if (stockHistory?.candles) {
+        setChartCandles(stockHistory.candles);
+      }
+      return;
+    }
+    try {
+      setLoadingChartTimeframe(true);
+      const normalized = normalizeTaiwanTicker(currentTicker).toUpperCase();
+      const candles = await fetchChartCandles(normalized, newTf);
+      setChartCandles(candles);
+    } catch (err) {
+      console.error(`Failed to load ${newTf} candles:`, err);
+    } finally {
+      setLoadingChartTimeframe(false);
+    }
+  };
+
   // Sync watchlist to localStorage
   useEffect(() => {
     localStorage.setItem('myWatchlist', JSON.stringify(watchlist));
@@ -259,6 +293,20 @@ export const App: React.FC = () => {
         }
 
         setStockHistory(result);
+
+        if (chartTimeframe === '1d') {
+          setChartCandles(result.candles);
+        } else {
+          try {
+            setLoadingChartTimeframe(true);
+            const tfCandles = await fetchChartCandles(normalized, chartTimeframe);
+            if (active) setChartCandles(tfCandles);
+          } catch (e) {
+            if (active) setChartCandles(result.candles);
+          } finally {
+            if (active) setLoadingChartTimeframe(false);
+          }
+        }
 
         const currentPrice = Number(result.quote?.c) || Number(result.candles[result.candles.length - 1]?.close) || 100;
         const atr = calculateATR(result.candles, 14) || (currentPrice * 0.02);
@@ -636,7 +684,7 @@ export const App: React.FC = () => {
                     {stockHistory && (
                       <TradingChart
                         ticker={currentPlan.ticker}
-                        candles={stockHistory.candles}
+                        candles={chartCandles || stockHistory.candles}
                         levels={currentPlan.levels}
                         bullishStrategy={currentPlan.bullishStrategy}
                         bearishStrategy={currentPlan.bearishStrategy}
@@ -644,6 +692,9 @@ export const App: React.FC = () => {
                         isVolumeEnabled={isVolumeEnabled}
                         activeProjection={activeProjection}
                         onProjectionChange={setActiveProjection}
+                        timeframe={chartTimeframe}
+                        onTimeframeChange={handleTimeframeChange}
+                        loadingTimeframe={loadingChartTimeframe}
                       />
                     )}
 

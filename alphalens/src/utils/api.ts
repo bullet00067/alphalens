@@ -330,11 +330,13 @@ export async function fetchWithProxy(url: string, useCache = true): Promise<any>
   }
 }
 
+export type ChartTimeframe = '60m' | '1d' | '1wk';
+
 /**
  * Helper to aggregate daily candles into weekly, monthly, or yearly candles
  */
 export function aggregateCandles(candles: Candle[], tf: string): Candle[] {
-  if (!tf || tf === '1day' || !candles || candles.length === 0) return candles;
+  if (!tf || tf === '1day' || tf === '1d' || !candles || candles.length === 0) return candles;
 
   const result: Candle[] = [];
   const groups: Record<string, Candle[]> = {};
@@ -350,11 +352,15 @@ export function aggregateCandles(candles: Candle[], tf: string): Candle[] {
     let key = '';
     const year = dateObj.getFullYear();
 
-    if (tf === '1week') {
+    if (tf === '1week' || tf === '1wk') {
+      // Calculate Monday of current week cleanly without mutating dateObj
       const day = dateObj.getDay();
       const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1);
-      const monday = new Date(dateObj.setDate(diff));
-      key = `${monday.getFullYear()}-W${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+      const monday = new Date(dateObj.getFullYear(), dateObj.getMonth(), diff);
+      const y = monday.getFullYear();
+      const m = String(monday.getMonth() + 1).padStart(2, '0');
+      const d = String(monday.getDate()).padStart(2, '0');
+      key = `${y}-${m}-${d}`;
     } else if (tf === '1month') {
       key = `${year}-${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
     } else if (tf === '1year') {
@@ -370,7 +376,7 @@ export function aggregateCandles(candles: Candle[], tf: string): Candle[] {
   for (const key in groups) {
     const group = groups[key];
     result.push({
-      time: group[0].time,
+      time: key, // Use standard ISO date string of Monday for consistency
       open: group[0].open,
       high: Math.max(...group.map(g => g.high)),
       low: Math.min(...group.map(g => g.low)),
@@ -889,6 +895,155 @@ export async function fetchStockHistoryCached(ticker: string, resolution = '1day
     }));
   }
   return result;
+}
+
+/**
+ * Fetch K-line candles for specific timeframe (60m, 1d, 1wk)
+ */
+export async function fetchChartCandles(ticker: string, tf: ChartTimeframe = '1d'): Promise<Candle[]> {
+  if (tf === '1d') {
+    const history = await fetchStockHistoryCached(ticker, '1day');
+    return history?.candles || [];
+  }
+
+  const cacheKey = `chart_cache_${ticker}_${tf}`;
+  const ttl = tf === '60m' ? 300000 : 3600000; // 5 min for 60m, 1 hr for 1wk
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (Date.now() - parsed.timestamp < ttl && Array.isArray(parsed.data) && parsed.data.length > 0) {
+        return parsed.data;
+      }
+    } catch (e) {
+      // Ignore cache parse error
+    }
+  }
+
+  if (tf === '60m') {
+    try {
+      const { result } = await fetchYahooChart(ticker, '60m', '6mo');
+      const timestamps = result.timestamp;
+      const quote = result.indicators?.quote?.[0];
+      const gmtoffset = Number(result.meta?.gmtoffset) || 0;
+
+      if (!timestamps || timestamps.length === 0 || !quote) {
+        throw new Error("Empty 60m data returned from Yahoo Finance");
+      }
+
+      const rawCandles: Candle[] = [];
+      for (let i = 0; i < timestamps.length; i++) {
+        const rawTs = timestamps[i];
+        if (typeof rawTs !== 'number' || isNaN(rawTs)) continue;
+
+        // Shift timestamp by gmtoffset so lightweight-charts UTC time display renders exchange local trading hours
+        const time = rawTs + gmtoffset;
+        const open = quote.open?.[i];
+        const high = quote.high?.[i];
+        const low = quote.low?.[i];
+        const close = quote.close?.[i];
+        const volume = quote.volume?.[i] || 0;
+
+        if (
+          open !== null && open !== undefined && !isNaN(open) &&
+          high !== null && high !== undefined && !isNaN(high) &&
+          low !== null && low !== undefined && !isNaN(low) &&
+          close !== null && close !== undefined && !isNaN(close)
+        ) {
+          rawCandles.push({ time, open, high, low, close, volume });
+        }
+      }
+
+      // Ensure strictly sorted and deduplicated by timestamp
+      rawCandles.sort((a, b) => Number(a.time) - Number(b.time));
+      const cleanCandles: Candle[] = [];
+      for (const c of rawCandles) {
+        if (cleanCandles.length === 0 || cleanCandles[cleanCandles.length - 1].time !== c.time) {
+          cleanCandles.push(c);
+        }
+      }
+
+      if (cleanCandles.length === 0) {
+        throw new Error("No valid 60m candle points parsed");
+      }
+
+      localStorage.setItem(cacheKey, JSON.stringify({
+        timestamp: Date.now(),
+        data: cleanCandles
+      }));
+      return cleanCandles;
+    } catch (err) {
+      console.error(`Failed to fetch 60m candles for ${ticker}:`, err);
+      // Fallback: return daily candles so the chart won't break
+      const fallback = await fetchStockHistoryCached(ticker, '1day');
+      return fallback?.candles || [];
+    }
+  }
+
+  if (tf === '1wk') {
+    try {
+      const { result } = await fetchYahooChart(ticker, '1wk', '10y');
+      const timestamps = result.timestamp;
+      const quote = result.indicators?.quote?.[0];
+
+      if (timestamps && timestamps.length > 0 && quote) {
+        const rawCandles: Candle[] = [];
+        for (let i = 0; i < timestamps.length; i++) {
+          const rawTs = timestamps[i];
+          if (typeof rawTs !== 'number' || isNaN(rawTs)) continue;
+
+          const date = new Date(rawTs * 1000);
+          const time = formatDt(date);
+          const open = quote.open?.[i];
+          const high = quote.high?.[i];
+          const low = quote.low?.[i];
+          const close = quote.close?.[i];
+          const volume = quote.volume?.[i] || 0;
+
+          if (
+            open !== null && open !== undefined && !isNaN(open) &&
+            high !== null && high !== undefined && !isNaN(high) &&
+            low !== null && low !== undefined && !isNaN(low) &&
+            close !== null && close !== undefined && !isNaN(close)
+          ) {
+            rawCandles.push({ time, open, high, low, close, volume });
+          }
+        }
+
+        // Deduplicate and sort by date string
+        rawCandles.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+        const cleanCandles: Candle[] = [];
+        for (const c of rawCandles) {
+          if (cleanCandles.length === 0 || cleanCandles[cleanCandles.length - 1].time !== c.time) {
+            cleanCandles.push(c);
+          }
+        }
+
+        if (cleanCandles.length > 0) {
+          localStorage.setItem(cacheKey, JSON.stringify({
+            timestamp: Date.now(),
+            data: cleanCandles
+          }));
+          return cleanCandles;
+        }
+      }
+    } catch (yahooWkErr) {
+      console.warn(`Direct Yahoo weekly fetch failed for ${ticker}, aggregating daily candles:`, yahooWkErr);
+    }
+
+    // Fallback: aggregate daily candles into weekly
+    const daily = await fetchStockHistoryCached(ticker, '1day');
+    const aggregated = aggregateCandles(daily?.candles || [], '1week');
+    if (aggregated.length > 0) {
+      localStorage.setItem(cacheKey, JSON.stringify({
+        timestamp: Date.now(),
+        data: aggregated
+      }));
+    }
+    return aggregated;
+  }
+
+  return [];
 }
 
 /**
